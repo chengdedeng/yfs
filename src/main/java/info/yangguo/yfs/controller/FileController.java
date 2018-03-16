@@ -1,46 +1,62 @@
 package info.yangguo.yfs.controller;
 
-import io.swagger.annotations.Api;
+import info.yangguo.yfs.dto.Result;
+import info.yangguo.yfs.dto.ResultCode;
+import info.yangguo.yfs.po.FileMetadata;
+import info.yangguo.yfs.service.FileService;
+import info.yangguo.yfs.service.MetadataService;
 import io.swagger.annotations.ApiOperation;
-import org.apache.commons.io.IOUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Controller;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestMethod;
-import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseBody;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.multipart.commons.CommonsMultipartFile;
 
-import java.io.IOException;
-import java.io.InputStream;
+import javax.servlet.http.HttpServletResponse;
 
 @Controller
-@RequestMapping(value = "api/file")
-@Api(value = "api/file")
 public class FileController {
     private static Logger logger = LoggerFactory.getLogger(FileController.class);
+    @Autowired
+    private FileService fileService;
+    @Autowired
+    private MetadataService metadataService;
 
-    @ApiOperation(value = "upload")
+    @ApiOperation(value = "api/file")
     @ResponseBody
-    @RequestMapping(value = "upload", method = {RequestMethod.POST})
-    public void save(@RequestParam("file") CommonsMultipartFile file) {
-        long size = file.getFileItem().getSize();
-        int bufSize = 1024 * 1024 * 10;
+    @RequestMapping(value = "api/file", method = {RequestMethod.POST})
+    public Result upload(MultipartFile file) {
+        Result result = new Result();
         try {
-            InputStream inputstream = file.getInputStream();
-            for (int i = 1; i < size / bufSize + 1; i++) {
-                if (bufSize * i > size) {
-                    IOUtils.toByteArray(inputstream, size - (bufSize * (i - 1)));
-                } else {
-                    IOUtils.toByteArray(inputstream, bufSize);
-                }
-                System.out.println(i);
-            }
-        } catch (IOException e) {
-            e.printStackTrace();
+            CommonsMultipartFile commonsMultipartFile = (CommonsMultipartFile) file;
+            FileMetadata fileMetadata = fileService.store(commonsMultipartFile);
+            metadataService.create(fileMetadata);
+            result.setCode(ResultCode.C200.code);
+            result.setValue(fileMetadata.getGroup() + "/" + fileMetadata.getPartition() + "/" + fileMetadata.getName());
+        } catch (Exception e) {
+            logger.error("upload api:{}", e);
+            result.setCode(ResultCode.C500.getCode());
+            result.setValue(ResultCode.C500.getDesc());
         }
+        return result;
+    }
 
+    @ApiOperation(value = "{group}/{partition}/{name}")
+    @RequestMapping(value = "{group}/{partition}/{name:.+}", method = {RequestMethod.GET})
+    public void download(@PathVariable String group, @PathVariable String partition, @PathVariable String name, HttpServletResponse response) {
+        String filePath = MetadataService.getId(group, partition, name);
+        try {
+            response.addHeader("Content-Disposition", "attachment;filename=" + name);
+            response.addHeader("Content-Length", "" + metadataService.getFileMetadata(filePath).getSize());
+            response.setContentType("application/octet-stream");
+            fileService.getFile(filePath, response);
+        } catch (Exception e) {
+            logger.error("file:{}下载失败:{}", filePath, e);
+        }
     }
 }
