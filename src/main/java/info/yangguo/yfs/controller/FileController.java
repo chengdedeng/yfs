@@ -1,10 +1,12 @@
 package info.yangguo.yfs.controller;
 
+import info.yangguo.yfs.config.ClusterProperties;
 import info.yangguo.yfs.dto.Result;
 import info.yangguo.yfs.dto.ResultCode;
 import info.yangguo.yfs.po.FileMetadata;
 import info.yangguo.yfs.service.FileService;
 import info.yangguo.yfs.service.MetadataService;
+import io.atomix.core.Atomix;
 import io.swagger.annotations.ApiOperation;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -18,14 +20,15 @@ import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.multipart.commons.CommonsMultipartFile;
 
 import javax.servlet.http.HttpServletResponse;
+import java.net.URLEncoder;
 
 @Controller
 public class FileController {
     private static Logger logger = LoggerFactory.getLogger(FileController.class);
     @Autowired
-    private FileService fileService;
+    private ClusterProperties clusterProperties;
     @Autowired
-    private MetadataService metadataService;
+    private Atomix atomix;
 
     @ApiOperation(value = "api/file")
     @ResponseBody
@@ -34,8 +37,8 @@ public class FileController {
         Result result = new Result();
         try {
             CommonsMultipartFile commonsMultipartFile = (CommonsMultipartFile) file;
-            FileMetadata fileMetadata = fileService.store(commonsMultipartFile);
-            metadataService.create(fileMetadata);
+            FileMetadata fileMetadata = FileService.store(clusterProperties, commonsMultipartFile);
+            MetadataService.create(clusterProperties, atomix, fileMetadata);
             result.setCode(ResultCode.C200.code);
             result.setValue(fileMetadata.getGroup() + "/" + fileMetadata.getPartition() + "/" + fileMetadata.getName());
         } catch (Exception e) {
@@ -51,10 +54,10 @@ public class FileController {
     public void download(@PathVariable String group, @PathVariable String partition, @PathVariable String name, HttpServletResponse response) {
         String filePath = MetadataService.getId(group, partition, name);
         try {
-            response.addHeader("Content-Disposition", "attachment;filename=" + name);
-            response.addHeader("Content-Length", "" + metadataService.getFileMetadata(filePath).getSize());
+            response.addHeader("Content-Disposition", "attachment; filename=" + URLEncoder.encode(name, "UTF-8"));
+            response.addHeader("Content-Length", "" + MetadataService.getFileMetadata(atomix, filePath).getSize());
             response.setContentType("application/octet-stream");
-            fileService.getFile(filePath, response);
+            FileService.getFile(clusterProperties, filePath, response);
         } catch (Exception e) {
             logger.error("file:{}下载失败:{}", filePath, e);
         }

@@ -4,23 +4,17 @@ import info.yangguo.yfs.config.ClusterProperties;
 import info.yangguo.yfs.config.YfsConfig;
 import info.yangguo.yfs.po.FileMetadata;
 import io.atomix.core.Atomix;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.stereotype.Service;
 
-@Service
 public class MetadataService {
-    @Autowired
-    private ClusterProperties clusterProperties;
-    @Autowired
-    private Atomix atomix;
-
-    public void create(FileMetadata fileMetadata) {
+    public static void create(ClusterProperties clusterProperties, Atomix atomix, FileMetadata fileMetadata) {
         fileMetadata.setAddSourceNode(clusterProperties.getLocal());
+        delete(clusterProperties, atomix, fileMetadata);
         YfsConfig.getConsistentMap(atomix).put(getId(fileMetadata), fileMetadata);
         YfsConfig.broadcastAddEvent(atomix, fileMetadata);
     }
 
-    public void delete(FileMetadata fileMetadata) {
+    public static void delete(ClusterProperties clusterProperties, Atomix atomix, FileMetadata fileMetadata) {
+        YfsConfig.getConsistentMap(atomix).remove(getId(fileMetadata));
     }
 
 
@@ -32,7 +26,7 @@ public class MetadataService {
         return getId(fileMetadata.getGroup(), String.valueOf(fileMetadata.getPartition()), fileMetadata.getName());
     }
 
-    public FileMetadata getFileMetadata(String key) {
+    public static FileMetadata getFileMetadata(Atomix atomix, String key) {
         return YfsConfig.getConsistentMap(atomix).get(key).value();
     }
 }
