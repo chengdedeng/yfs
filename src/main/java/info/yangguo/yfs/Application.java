@@ -1,8 +1,6 @@
 package info.yangguo.yfs;
 
 import info.yangguo.yfs.config.ClusterProperties;
-import io.atomix.cluster.Node;
-import io.atomix.messaging.Endpoint;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
@@ -29,7 +27,6 @@ public class Application implements EmbeddedServletContainerCustomizer {
                 configurableEmbeddedServletContainer.setPort(clusterNode.getHttp_port());
             }
         });
-
     }
 }
 
