@@ -16,6 +16,7 @@ import io.atomix.utils.serializer.Serializer;
 import io.atomix.utils.time.Versioned;
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.lang3.RandomUtils;
+import org.apache.commons.lang3.SerializationUtils;
 import org.apache.http.HttpResponse;
 import org.apache.http.client.HttpClient;
 import org.apache.http.client.config.RequestConfig;
@@ -25,7 +26,6 @@ import org.apache.http.config.Registry;
 import org.apache.http.config.RegistryBuilder;
 import org.apache.http.conn.socket.ConnectionSocketFactory;
 import org.apache.http.conn.socket.PlainConnectionSocketFactory;
-import org.apache.http.conn.ssl.SSLConnectionSocketFactory;
 import org.apache.http.impl.client.HttpClientBuilder;
 import org.apache.http.impl.conn.PoolingHttpClientConnectionManager;
 import org.slf4j.Logger;
@@ -36,7 +36,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 import java.io.File;
-import java.io.IOException;
+import java.time.Duration;
 import java.util.Date;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
@@ -63,7 +63,6 @@ public class YfsConfig {
 
         Registry<ConnectionSocketFactory> registry = RegistryBuilder.<ConnectionSocketFactory>create()
                 .register("http", PlainConnectionSocketFactory.getSocketFactory())
-                .register("https", SSLConnectionSocketFactory.getSocketFactory())
                 .build();
         PoolingHttpClientConnectionManager connectionManager = new PoolingHttpClientConnectionManager(registry);
         connectionManager.setMaxTotal(1000);
@@ -110,9 +109,9 @@ public class YfsConfig {
         }
         Atomix atomix = builder.withDataDirectory(metadataDir).build();
         atomix.start().join();
-        atomix.eventingService().<FileMetadata, FileMetadata>subscribe(addTopicName, serializer::decode, message -> {
+
+        atomix.messagingService().<FileMetadata, FileMetadata>subscribe(addTopicName, serializer::decode, message -> {
             if (!clusterProperties.getLocal().equals(message.getAddSourceNode())) {
-                logger.info("create-event:{}", JsonUtil.toJson(message, true));
                 ClusterProperties.ClusterNode clusterNode = mapAtomicReference.get().get(message.getAddSourceNode());
                 String url = "http://" + clusterNode.getHost() + ":" + clusterNode.getHttp_port() + "/" + MetadataService.getId(message);
                 HttpUriRequest httpUriRequest = new HttpGet(url);
@@ -121,27 +120,37 @@ public class YfsConfig {
                     HttpResponse response = httpClient.execute(httpUriRequest);
                     long checkSum = FileService.store(clusterProperties, message, response);
                     if (checkSum == message.getCheckSum()) {
-                        String key = MetadataService.getId(message);
                         for (int i = 0; i < clusterProperties.getNode().size(); i++) {
                             try {
                                 Thread.sleep(RandomUtils.nextInt(i, i * 1000 + 10));
                             } catch (InterruptedException e) {
-                                logger.warn("随机暂停失败", e);
+                                logger.warn(e.toString());
                             }
-                            if (updateAddTarget(clusterProperties, atomix, key)) {
+                            if (updateAddTarget(clusterProperties, atomix, MetadataService.getId(message))) {
                                 break;
                             }
                         }
                     }
-                } catch (IOException e) {
+                } catch (Exception e) {
                     logger.warn("同步失败:{}", JsonUtil.toJson(message, true), e);
                 }
             }
             return CompletableFuture.completedFuture(message);
         }, serializer::encode).join();
-        atomix.eventingService().<FileMetadata, FileMetadata>subscribe(deleteTopicName, serializer::decode, message -> {
+
+        atomix.messagingService().<FileMetadata, FileMetadata>subscribe(deleteTopicName, serializer::decode, message -> {
+            FileService.delete(clusterProperties, message);
             if (!clusterProperties.getLocal().equals(message.getRemoveSourceNode())) {
-                logger.info("delete-event:{}", JsonUtil.toJson(message, true));
+                for (int i = 0; i < clusterProperties.getNode().size(); i++) {
+                    try {
+                        Thread.sleep(RandomUtils.nextInt(i, i * 1000 + 10));
+                    } catch (InterruptedException e) {
+                        logger.warn("随机暂停失败", e);
+                    }
+                    if (updateRemoveTarget(clusterProperties, atomix, MetadataService.getId(message))) {
+                        break;
+                    }
+                }
             }
             return CompletableFuture.completedFuture(message);
         }, serializer::encode).join();
@@ -156,6 +165,8 @@ public class YfsConfig {
                             .withPersistence(Persistence.PERSISTENT)
                             .withSerializer(serializer)
                             .withBackups(2)
+                            .withRetryDelay(Duration.ofSeconds(1))
+                            .withMaxRetries(3)
                             .build();
                 }
             }
@@ -164,16 +175,49 @@ public class YfsConfig {
     }
 
     public static void broadcastAddEvent(Atomix atomix, FileMetadata fileMetadata) {
-        atomix.eventingService().broadcast(addTopicName, fileMetadata, serializer::encode);
+        atomix.messagingService().broadcast(addTopicName, fileMetadata, serializer::encode);
     }
 
     public static void broadcastDeleteEvent(Atomix atomix, FileMetadata fileMetadata) {
-        atomix.eventingService().broadcast(deleteTopicName, fileMetadata, serializer::encode);
+        atomix.messagingService().broadcast(deleteTopicName, fileMetadata, serializer::encode);
     }
 
     private static boolean updateAddTarget(ClusterProperties clusterProperties, Atomix atomix, String key) {
-        Versioned<FileMetadata> tmp = getConsistentMap(atomix).get(key);
-        tmp.value().getAddTargetNodes().add(clusterProperties.getLocal());
-        return getConsistentMap(atomix).replace(key, tmp.version(), tmp.value());
+        try {
+            Versioned<FileMetadata> tmp = getConsistentMap(atomix).get(key);
+            long version = tmp.version();
+            FileMetadata fileMetadata = SerializationUtils.clone(tmp.value());
+            fileMetadata.getAddTargetNodes().add(clusterProperties.getLocal());
+            boolean result = getConsistentMap(atomix).replace(key, version, fileMetadata);
+            if (result == true) {
+                logger.info("updateAddTarget:{}", JsonUtil.toJson(fileMetadata, true));
+            }
+            return result;
+        } catch (Exception e) {
+            logger.warn(e.toString());
+            return false;
+        }
+    }
+
+    private static boolean updateRemoveTarget(ClusterProperties clusterProperties, Atomix atomix, String key) {
+        try {
+            Versioned<FileMetadata> tmp = getConsistentMap(atomix).get(key);
+            long version = tmp.version();
+            FileMetadata fileMetadata = SerializationUtils.clone(tmp.value());
+            fileMetadata.getRemoveTargetNodes().add(clusterProperties.getLocal());
+            if (fileMetadata.getRemoveTargetNodes().size() == clusterProperties.getNode().size() - 1) {
+                getConsistentMap(atomix).remove(key);
+                logger.info("updateRemoveTarget:{}", JsonUtil.toJson(fileMetadata, true));
+                return true;
+            } else {
+                boolean result = getConsistentMap(atomix).replace(key, version, fileMetadata);
+                if (result == true) {
+                    logger.info("updateRemoveTarget:{}", JsonUtil.toJson(fileMetadata, true));
+                }
+                return result;
+            }
+        } catch (Exception e) {
+            return false;
+        }
     }
 }

@@ -16,13 +16,14 @@ import java.util.HashSet;
 public class FileService {
     public static FileMetadata store(ClusterProperties clusterProperties, CommonsMultipartFile commonsMultipartFile) throws IOException {
         FileMetadata fileMetadata = new FileMetadata();
-        int block = (Hashing.consistentHash(Hashing.murmur3_32().hashBytes(commonsMultipartFile.getName().getBytes()), clusterProperties.getFiledata().getPartition()) + 1);
+        int block = (Hashing.consistentHash(Hashing.murmur3_32().hashBytes(commonsMultipartFile.getOriginalFilename().getBytes()), clusterProperties.getFiledata().getPartition()) + 1);
         fileMetadata.setCreateTime(new Date());
         fileMetadata.setGroup(clusterProperties.getGroup());
         fileMetadata.setName(commonsMultipartFile.getOriginalFilename());
         fileMetadata.setSize(commonsMultipartFile.getSize());
         fileMetadata.setPartition(block);
         fileMetadata.setAddTargetNodes(new HashSet<>());
+        fileMetadata.setRemoveTargetNodes(new HashSet<>());
 
         long checkSum = store(clusterProperties, fileMetadata, commonsMultipartFile.getInputStream());
         fileMetadata.setCheckSum(checkSum);
@@ -36,13 +37,8 @@ public class FileService {
 
     private static long store(ClusterProperties clusterProperties, FileMetadata fileMetadata, InputStream inputStream) throws IOException {
         long checkSum;
-        String fileDir = null;
-        if (clusterProperties.getFiledata().getDir().startsWith("/")) {
-            fileDir = clusterProperties.getFiledata().getDir() + "/" + clusterProperties.getLocal() + "/" + clusterProperties.getGroup() + "/" + fileMetadata.getPartition();
-        } else {
-            fileDir = FileUtils.getUserDirectoryPath() + "/" + clusterProperties.getFiledata().getDir() + "/" + clusterProperties.getLocal() + "/" + clusterProperties.getGroup() + "/" + fileMetadata.getPartition();
-        }
-        File dir = new File(fileDir);
+        StringBuilder fileDir = getDir(clusterProperties, fileMetadata);
+        File dir = new File(fileDir.toString());
         if (!dir.exists()) {
             FileUtils.forceMkdir(dir);
         }
@@ -51,8 +47,6 @@ public class FileService {
             file.delete();
             file = new File(fileDir + "/" + fileMetadata.getName());
         }
-
-
         try {
             FileUtils.copyInputStreamToFile(inputStream, file);
             checkSum = FileUtils.checksumCRC32(file);
@@ -65,18 +59,40 @@ public class FileService {
         return checkSum;
     }
 
-    public static void getFile(ClusterProperties clusterProperties, String path, HttpServletResponse response) throws IOException {
-        String filePath = null;
-        if (clusterProperties.getFiledata().getDir().startsWith("/")) {
-            filePath = clusterProperties.getFiledata().getDir() + "/" + clusterProperties.getLocal() + "/" + path;
-        } else {
-            filePath = FileUtils.getUserDirectoryPath() + "/" + clusterProperties.getFiledata().getDir() + "/" + clusterProperties.getLocal() + "/" + path;
-        }
-        File file = new File(filePath);
+    public static void getFile(ClusterProperties clusterProperties, FileMetadata fileMetadata, HttpServletResponse response) throws IOException {
+        StringBuilder filePath = getPath(clusterProperties, fileMetadata);
+        File file = new File(filePath.toString());
         try (InputStream inputStream = new FileInputStream(file); OutputStream outputStream = response.getOutputStream()) {
             IOUtils.copyLarge(inputStream, outputStream);
         } catch (IOException e) {
             throw e;
         }
+    }
+
+    public static void delete(ClusterProperties clusterProperties, FileMetadata fileMetadata) {
+        StringBuilder filePath = getPath(clusterProperties, fileMetadata);
+        File file = new File(filePath.toString());
+        file.delete();
+    }
+
+    private static StringBuilder getDir(ClusterProperties clusterProperties, FileMetadata fileMetadata) {
+        StringBuilder fileDir = new StringBuilder();
+        if (!clusterProperties.getFiledata().getDir().startsWith("/")) {
+            fileDir.append(FileUtils.getUserDirectoryPath()).append("/");
+        }
+        fileDir.append(clusterProperties.getFiledata().getDir())
+                .append("/")
+                .append(clusterProperties.getLocal())
+                .append("/")
+                .append(clusterProperties.getGroup())
+                .append("/")
+                .append(fileMetadata.getPartition());
+        return fileDir;
+    }
+
+    private static StringBuilder getPath(ClusterProperties clusterProperties, FileMetadata fileMetadata) {
+        return getDir(clusterProperties, fileMetadata)
+                .append("/")
+                .append(fileMetadata.getName());
     }
 }

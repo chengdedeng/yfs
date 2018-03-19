@@ -1,11 +1,13 @@
 package info.yangguo.yfs.controller;
 
 import info.yangguo.yfs.config.ClusterProperties;
+import info.yangguo.yfs.config.YfsConfig;
 import info.yangguo.yfs.dto.Result;
 import info.yangguo.yfs.dto.ResultCode;
 import info.yangguo.yfs.po.FileMetadata;
 import info.yangguo.yfs.service.FileService;
 import info.yangguo.yfs.service.MetadataService;
+import info.yangguo.yfs.utils.JsonUtil;
 import io.atomix.core.Atomix;
 import io.swagger.annotations.ApiOperation;
 import org.slf4j.Logger;
@@ -34,13 +36,25 @@ public class FileController {
     @ResponseBody
     @RequestMapping(value = "api/file", method = {RequestMethod.POST})
     public Result upload(MultipartFile file) {
+        logger.info("upload file:{}", file.getOriginalFilename());
         Result result = new Result();
+        FileMetadata fileMetadata = null;
         try {
             CommonsMultipartFile commonsMultipartFile = (CommonsMultipartFile) file;
-            FileMetadata fileMetadata = FileService.store(clusterProperties, commonsMultipartFile);
+            fileMetadata = FileService.store(clusterProperties, commonsMultipartFile);
             MetadataService.create(clusterProperties, atomix, fileMetadata);
             result.setCode(ResultCode.C200.code);
             result.setValue(fileMetadata.getGroup() + "/" + fileMetadata.getPartition() + "/" + fileMetadata.getName());
+        } catch (Exception e) {
+            logger.error("upload api:{}", e);
+            if (fileMetadata != null) {
+                FileService.delete(clusterProperties, fileMetadata);
+            }
+            result.setCode(ResultCode.C500.getCode());
+            result.setValue(ResultCode.C500.getDesc());
+        }
+        try {
+            YfsConfig.broadcastAddEvent(atomix, fileMetadata);
         } catch (Exception e) {
             logger.error("upload api:{}", e);
             result.setCode(ResultCode.C500.getCode());
@@ -49,17 +63,43 @@ public class FileController {
         return result;
     }
 
-    @ApiOperation(value = "{group}/{partition}/{name}")
+    @ApiOperation(value = "{group}/{partition}/{name:.+}")
+    @RequestMapping(value = "{group}/{partition}/{name:.+}", method = {RequestMethod.DELETE})
+    @ResponseBody
+    public Result delete(@PathVariable String group, @PathVariable String partition, @PathVariable String name) {
+        FileMetadata fileMetadata = new FileMetadata();
+        fileMetadata.setGroup(group);
+        fileMetadata.setPartition(Integer.valueOf(partition));
+        fileMetadata.setName(name);
+        logger.info("delete file:{}", MetadataService.getId(fileMetadata));
+        Result result = new Result();
+        try {
+            MetadataService.softDelete(clusterProperties, atomix, fileMetadata);
+            FileService.delete(clusterProperties, fileMetadata);
+            result.setCode(ResultCode.C200.code);
+        } catch (Exception e) {
+            logger.error("delete api:{}", e);
+            result.setCode(ResultCode.C500.getCode());
+            result.setValue(ResultCode.C500.getDesc());
+        }
+        return result;
+    }
+
+    @ApiOperation(value = "{group}/{partition}/{name:.+}")
     @RequestMapping(value = "{group}/{partition}/{name:.+}", method = {RequestMethod.GET})
     public void download(@PathVariable String group, @PathVariable String partition, @PathVariable String name, HttpServletResponse response) {
-        String filePath = MetadataService.getId(group, partition, name);
+        FileMetadata fileMetadata = new FileMetadata();
+        fileMetadata.setGroup(group);
+        fileMetadata.setPartition(Integer.valueOf(partition));
+        fileMetadata.setName(name);
         try {
             response.addHeader("Content-Disposition", "attachment; filename=" + URLEncoder.encode(name, "UTF-8"));
-            response.addHeader("Content-Length", "" + MetadataService.getFileMetadata(atomix, filePath).getSize());
             response.setContentType("application/octet-stream");
-            FileService.getFile(clusterProperties, filePath, response);
+
+
+            FileService.getFile(clusterProperties, fileMetadata, response);
         } catch (Exception e) {
-            logger.error("file:{}下载失败:{}", filePath, e);
+            logger.error("file:{}下载失败:{}", JsonUtil.toJson(fileMetadata, true), e);
         }
     }
 }
