@@ -50,6 +50,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 import java.io.File;
+import java.time.Duration;
 import java.util.Date;
 import java.util.Map;
 import java.util.Set;
@@ -123,6 +124,8 @@ public class YfsConfig {
         consistentMap = atomix.<String, FileMetadata>consistentMapBuilder(mapName)
                 .withPersistence(Persistence.PERSISTENT)
                 .withSerializer(serializer)
+                .withRetryDelay(Duration.ofSeconds(1))
+                .withMaxRetries(3)
                 .withBackups(2)
                 .build();
         consistentMap.addListener(event -> {
