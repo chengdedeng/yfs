@@ -4,7 +4,6 @@ import info.yangguo.yfs.config.ClusterProperties;
 import info.yangguo.yfs.config.YfsConfig;
 import info.yangguo.yfs.po.FileMetadata;
 import io.atomix.utils.time.Versioned;
-import org.apache.commons.lang3.SerializationUtils;
 
 public class MetadataService {
     public static void create(ClusterProperties clusterProperties, FileMetadata fileMetadata) {
@@ -16,7 +15,7 @@ public class MetadataService {
         Versioned<FileMetadata> tmp = YfsConfig.consistentMap.get(getKey(fileMetadata));
         if (tmp != null) {
             long version = tmp.version();
-            fileMetadata = SerializationUtils.clone(tmp.value());
+            fileMetadata = tmp.value();
             fileMetadata.setRemoveSourceNode(clusterProperties.getLocal());
             YfsConfig.consistentMap.replace(getKey(fileMetadata), version, fileMetadata);
         }
@@ -45,7 +44,7 @@ public class MetadataService {
     public static FileMetadata getFileMetadata(FileMetadata fileMetadata) {
         String key = getKey(fileMetadata);
         Versioned<FileMetadata> tmp = YfsConfig.consistentMap.get(key);
-        fileMetadata = SerializationUtils.clone(tmp.value());
+        fileMetadata = tmp.value();
         return fileMetadata;
     }
 }

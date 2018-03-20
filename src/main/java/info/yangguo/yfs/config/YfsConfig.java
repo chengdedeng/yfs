@@ -16,7 +16,6 @@ import io.atomix.utils.serializer.KryoNamespaces;
 import io.atomix.utils.serializer.Serializer;
 import io.atomix.utils.time.Versioned;
 import org.apache.commons.io.FileUtils;
-import org.apache.commons.lang3.SerializationUtils;
 import org.apache.http.HttpResponse;
 import org.apache.http.client.HttpClient;
 import org.apache.http.client.config.RequestConfig;
@@ -117,7 +116,9 @@ public class YfsConfig {
                     Versioned<FileMetadata> tmp1 = event.newValue();
                     FileMetadata fileMetadata1 = tmp1.value();
                     if (!clusterProperties.getLocal().equals(fileMetadata1.getAddSourceNode())) {
-                        logger.info("{} Event Info:{}", MapEvent.Type.INSERT.name(), JsonUtil.toJson(fileMetadata1, true));
+                        logger.info("{} Event Info:\n{}",
+                                MapEvent.Type.INSERT.name(),
+                                JsonUtil.toJson(fileMetadata1, true));
                         ClusterProperties.ClusterNode clusterNode = mapAtomicReference.get().get(fileMetadata1.getAddSourceNode());
                         long checkSum = syncFile(clusterProperties, clusterNode, fileMetadata1);
                         if (fileMetadata1.getCheckSum() == checkSum) {
@@ -136,7 +137,9 @@ public class YfsConfig {
                             && !clusterProperties.getLocal().equals(addSourceNode)
                             && !addTargetNodes.contains(clusterProperties.getLocal())) {
                         FileMetadata fileMetadata3 = tmp3.value();
-                        logger.info("{} Event Info:\nOldValue:{}\nNewValue:{}", MapEvent.Type.UPDATE.name(), JsonUtil.toJson(fileMetadata3, true),
+                        logger.info("{} Event Info:\nOldValue:{}\nNewValue:{}",
+                                MapEvent.Type.UPDATE.name(),
+                                JsonUtil.toJson(fileMetadata3, true),
                                 JsonUtil.toJson(fileMetadata2, true));
                         if (fileMetadata2.getCheckSum() != FileService.checkFile(clusterProperties, fileMetadata2)) {
                             ClusterProperties.ClusterNode clusterNode = mapAtomicReference.get().get(fileMetadata2.getAddSourceNode());
@@ -149,8 +152,10 @@ public class YfsConfig {
                         }
                     } else if (tmp3 != null && removeSourceNode != null && !clusterProperties.getLocal().equals(removeSourceNode) && !removeTargetNodes.contains(clusterProperties.getLocal())) {
                         FileMetadata fileMetadata3 = tmp3.value();
-                        logger.info("{} Event Info:\nOldValue:{}\nNewValue:{}", MapEvent.Type.UPDATE.name(), JsonUtil.toJson(fileMetadata3, true),
-                                JsonUtil.toJson(fileMetadata2, true));
+                        logger.info("{} Event Info:\nOldValue:{}\nNewValue:{}",
+                                MapEvent.Type.UPDATE.name(),
+                                JsonUtil.toJson(fileMetadata3, false),
+                                JsonUtil.toJson(fileMetadata2, false));
                         String key = MetadataService.getKey(fileMetadata2);
                         FileService.delete(clusterProperties, fileMetadata2);
                         updateRemoveTarget(clusterProperties, key);
@@ -181,7 +186,7 @@ public class YfsConfig {
         try {
             Versioned<FileMetadata> tmp = consistentMap.get(key);
             long version = tmp.version();
-            fileMetadata = SerializationUtils.clone(tmp.value());
+            fileMetadata = tmp.value();
             fileMetadata.getAddTargetNodes().add(clusterProperties.getLocal());
             result = consistentMap.replace(key, version, fileMetadata);
         } catch (Exception e) {
@@ -200,7 +205,7 @@ public class YfsConfig {
         try {
             Versioned<FileMetadata> tmp = consistentMap.get(key);
             long version = tmp.version();
-            fileMetadata = SerializationUtils.clone(tmp.value());
+            fileMetadata = tmp.value();
             fileMetadata.getRemoveTargetNodes().add(clusterProperties.getLocal());
             if (fileMetadata.getRemoveTargetNodes().size() == clusterProperties.getNode().size() - 1) {
                 consistentMap.remove(key);
