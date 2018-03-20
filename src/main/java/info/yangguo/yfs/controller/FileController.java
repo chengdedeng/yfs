@@ -70,7 +70,7 @@ public class FileController {
     @ApiOperation(value = "{group}/{partition}/{name:.+}")
     @RequestMapping(value = "{group}/{partition}/{name:.+}", method = {RequestMethod.DELETE})
     @ResponseBody
-    public Result delete(@PathVariable String group, @PathVariable String partition, @PathVariable String name) {
+    public String delete(@PathVariable String group, @PathVariable String partition, @PathVariable String name) {
         FileMetadata fileMetadata = new FileMetadata();
         fileMetadata.setGroup(group);
         fileMetadata.setPartition(Integer.valueOf(partition));
@@ -86,7 +86,7 @@ public class FileController {
             result.setCode(ResultCode.C500.getCode());
             result.setValue(ResultCode.C500.getDesc());
         }
-        return result;
+        return JsonUtil.toJson(result,true);
     }
 
     @ApiOperation(value = "{group}/{partition}/{name:.+}")
@@ -99,8 +99,6 @@ public class FileController {
         try {
             response.addHeader("Content-Disposition", "attachment; filename=" + URLEncoder.encode(name, "UTF-8"));
             response.setContentType("application/octet-stream");
-
-
             FileService.getFile(clusterProperties, fileMetadata, response);
         } catch (Exception e) {
             logger.error("file:{}下载失败:{}", JsonUtil.toJson(fileMetadata, true), e);

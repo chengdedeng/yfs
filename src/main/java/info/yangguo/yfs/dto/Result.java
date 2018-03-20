@@ -15,12 +15,14 @@
  */
 package info.yangguo.yfs.dto;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 
 import java.io.Serializable;
 
 @ApiModel(value = "Rest Result")
+@JsonInclude(JsonInclude.Include.NON_NULL)
 public class Result<T> implements Serializable {
     private static final long serialVersionUID = -4696898674758059398L;
     @ApiModelProperty

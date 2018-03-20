@@ -15,6 +15,8 @@
  */
 package info.yangguo.yfs.config;
 
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.support.PropertySourcesPlaceholderConfigurer;
@@ -32,7 +34,10 @@ import javax.servlet.Filter;
 
 @Configuration
 @EnableWebMvc
+@EnableConfigurationProperties({ClusterProperties.class})
 public class WebConfig {
+    @Autowired
+    private ClusterProperties clusterProperties;
     @Bean
     public static PropertySourcesPlaceholderConfigurer propertySourcesPlaceholderConfigurer() {
         return new PropertySourcesPlaceholderConfigurer();
@@ -60,7 +65,7 @@ public class WebConfig {
     @Bean
     public MultipartResolver multipartResolver() {
         CommonsMultipartResolver multipartResolver = new CommonsMultipartResolver();
-        multipartResolver.setMaxUploadSize(5364763400000L);
+        multipartResolver.setMaxUploadSize(clusterProperties.getMaxUploadSize());
         return multipartResolver;
     }
 

@@ -27,6 +27,7 @@ import java.util.List;
 @Getter
 @Setter
 public class ClusterProperties {
+    private long maxUploadSize;
     private String group;
     private String local;
     private Metadata metadata;
