@@ -3,33 +3,31 @@ package info.yangguo.yfs.service;
 import info.yangguo.yfs.config.ClusterProperties;
 import info.yangguo.yfs.config.YfsConfig;
 import info.yangguo.yfs.po.FileMetadata;
-import io.atomix.core.Atomix;
 import io.atomix.utils.time.Versioned;
 import org.apache.commons.lang3.SerializationUtils;
 
 public class MetadataService {
-    public static void create(ClusterProperties clusterProperties, Atomix atomix, FileMetadata fileMetadata) {
+    public static void create(ClusterProperties clusterProperties, FileMetadata fileMetadata) {
         fileMetadata.setAddSourceNode(clusterProperties.getLocal());
-        YfsConfig.getConsistentMap(atomix).put(getId(fileMetadata), fileMetadata);
+        YfsConfig.consistentMap.put(getKey(fileMetadata), fileMetadata);
     }
 
-    public static void softDelete(ClusterProperties clusterProperties, Atomix atomix, FileMetadata fileMetadata) {
-        Versioned<FileMetadata> tmp = YfsConfig.getConsistentMap(atomix).get(getId(fileMetadata));
+    public static void softDelete(ClusterProperties clusterProperties, FileMetadata fileMetadata) {
+        Versioned<FileMetadata> tmp = YfsConfig.consistentMap.get(getKey(fileMetadata));
         if (tmp != null) {
             long version = tmp.version();
             fileMetadata = SerializationUtils.clone(tmp.value());
             fileMetadata.setRemoveSourceNode(clusterProperties.getLocal());
-            YfsConfig.getConsistentMap(atomix).replace(getId(fileMetadata), version, fileMetadata);
-            YfsConfig.broadcastDeleteEvent(atomix, fileMetadata);
+            YfsConfig.consistentMap.replace(getKey(fileMetadata), version, fileMetadata);
         }
     }
 
-    public static void delete(Atomix atomix, FileMetadata fileMetadata) {
-        YfsConfig.getConsistentMap(atomix).remove(getId(fileMetadata));
+    public static void delete(FileMetadata fileMetadata) {
+        YfsConfig.consistentMap.remove(getKey(fileMetadata));
     }
 
 
-    public static String getId(String group, String partition, String name) {
+    public static String getKey(String group, String partition, String name) {
         StringBuilder stringBuilder = new StringBuilder();
         stringBuilder
                 .append(group)
@@ -40,13 +38,13 @@ public class MetadataService {
         return stringBuilder.toString();
     }
 
-    public static String getId(FileMetadata fileMetadata) {
-        return getId(fileMetadata.getGroup(), String.valueOf(fileMetadata.getPartition()), fileMetadata.getName());
+    public static String getKey(FileMetadata fileMetadata) {
+        return getKey(fileMetadata.getGroup(), String.valueOf(fileMetadata.getPartition()), fileMetadata.getName());
     }
 
-    public static FileMetadata getFileMetadata(Atomix atomix, FileMetadata fileMetadata) {
-        String key = getId(fileMetadata);
-        Versioned<FileMetadata> tmp = YfsConfig.getConsistentMap(atomix).get(key);
+    public static FileMetadata getFileMetadata(FileMetadata fileMetadata) {
+        String key = getKey(fileMetadata);
+        Versioned<FileMetadata> tmp = YfsConfig.consistentMap.get(key);
         fileMetadata = SerializationUtils.clone(tmp.value());
         return fileMetadata;
     }

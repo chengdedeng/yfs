@@ -1,14 +1,12 @@
 package info.yangguo.yfs.controller;
 
 import info.yangguo.yfs.config.ClusterProperties;
-import info.yangguo.yfs.config.YfsConfig;
 import info.yangguo.yfs.dto.Result;
 import info.yangguo.yfs.dto.ResultCode;
 import info.yangguo.yfs.po.FileMetadata;
 import info.yangguo.yfs.service.FileService;
 import info.yangguo.yfs.service.MetadataService;
 import info.yangguo.yfs.utils.JsonUtil;
-import io.atomix.core.Atomix;
 import io.swagger.annotations.ApiOperation;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -29,8 +27,6 @@ public class FileController {
     private static Logger logger = LoggerFactory.getLogger(FileController.class);
     @Autowired
     private ClusterProperties clusterProperties;
-    @Autowired
-    private Atomix atomix;
 
     @ApiOperation(value = "api/file")
     @ResponseBody
@@ -42,7 +38,7 @@ public class FileController {
         try {
             CommonsMultipartFile commonsMultipartFile = (CommonsMultipartFile) file;
             fileMetadata = FileService.store(clusterProperties, commonsMultipartFile);
-            MetadataService.create(clusterProperties, atomix, fileMetadata);
+            MetadataService.create(clusterProperties, fileMetadata);
             result.setCode(ResultCode.C200.code);
             result.setValue(fileMetadata.getGroup() + "/" + fileMetadata.getPartition() + "/" + fileMetadata.getName());
         } catch (Exception e) {
@@ -50,13 +46,6 @@ public class FileController {
             if (fileMetadata != null) {
                 FileService.delete(clusterProperties, fileMetadata);
             }
-            result.setCode(ResultCode.C500.getCode());
-            result.setValue(ResultCode.C500.getDesc());
-        }
-        try {
-            YfsConfig.broadcastAddEvent(atomix, fileMetadata);
-        } catch (Exception e) {
-            logger.error("upload api:{}", e);
             result.setCode(ResultCode.C500.getCode());
             result.setValue(ResultCode.C500.getDesc());
         }
@@ -71,10 +60,10 @@ public class FileController {
         fileMetadata.setGroup(group);
         fileMetadata.setPartition(Integer.valueOf(partition));
         fileMetadata.setName(name);
-        logger.info("delete file:{}", MetadataService.getId(fileMetadata));
+        logger.info("delete file:{}", MetadataService.getKey(fileMetadata));
         Result result = new Result();
         try {
-            MetadataService.softDelete(clusterProperties, atomix, fileMetadata);
+            MetadataService.softDelete(clusterProperties, fileMetadata);
             FileService.delete(clusterProperties, fileMetadata);
             result.setCode(ResultCode.C200.code);
         } catch (Exception e) {

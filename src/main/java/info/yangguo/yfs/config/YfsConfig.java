@@ -8,6 +8,7 @@ import info.yangguo.yfs.utils.JsonUtil;
 import io.atomix.cluster.Node;
 import io.atomix.core.Atomix;
 import io.atomix.core.map.ConsistentMap;
+import io.atomix.core.map.MapEvent;
 import io.atomix.messaging.Endpoint;
 import io.atomix.primitive.Persistence;
 import io.atomix.utils.serializer.KryoNamespace;
@@ -15,7 +16,6 @@ import io.atomix.utils.serializer.KryoNamespaces;
 import io.atomix.utils.serializer.Serializer;
 import io.atomix.utils.time.Versioned;
 import org.apache.commons.io.FileUtils;
-import org.apache.commons.lang3.RandomUtils;
 import org.apache.commons.lang3.SerializationUtils;
 import org.apache.http.HttpResponse;
 import org.apache.http.client.HttpClient;
@@ -36,10 +36,9 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 import java.io.File;
-import java.time.Duration;
 import java.util.Date;
 import java.util.Map;
-import java.util.concurrent.CompletableFuture;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 
@@ -48,10 +47,8 @@ import java.util.stream.Collectors;
 public class YfsConfig {
     private static Logger logger = LoggerFactory.getLogger(YfsConfig.class);
     private static final String mapName = "file-metadata";
-    private static final String addTopicName = "add-event";
-    private static final String deleteTopicName = "delete-event";
     public static Serializer serializer = null;
-    private static volatile ConsistentMap<String, FileMetadata> consistentMap = null;
+    public static ConsistentMap<String, FileMetadata> consistentMap = null;
     private static HttpClient httpClient;
 
     static {
@@ -109,115 +106,115 @@ public class YfsConfig {
         }
         Atomix atomix = builder.withDataDirectory(metadataDir).build();
         atomix.start().join();
-
-        atomix.messagingService().<FileMetadata, FileMetadata>subscribe(addTopicName, serializer::decode, message -> {
-            if (!clusterProperties.getLocal().equals(message.getAddSourceNode())) {
-                ClusterProperties.ClusterNode clusterNode = mapAtomicReference.get().get(message.getAddSourceNode());
-                String url = "http://" + clusterNode.getHost() + ":" + clusterNode.getHttp_port() + "/" + MetadataService.getId(message);
-                HttpUriRequest httpUriRequest = new HttpGet(url);
-                try {
-                    logger.info(url);
-                    HttpResponse response = httpClient.execute(httpUriRequest);
-                    long checkSum = FileService.store(clusterProperties, message, response);
-                    if (checkSum == message.getCheckSum()) {
-                        for (int i = 0; i < clusterProperties.getNode().size(); i++) {
-                            try {
-                                Thread.sleep(RandomUtils.nextInt(i, i * 1000 + 10));
-                            } catch (InterruptedException e) {
-                                logger.warn(e.toString());
-                            }
-                            if (updateAddTarget(clusterProperties, atomix, MetadataService.getId(message))) {
-                                break;
-                            }
+        consistentMap = atomix.<String, FileMetadata>consistentMapBuilder(mapName)
+                .withPersistence(Persistence.PERSISTENT)
+                .withSerializer(serializer)
+                .withBackups(2)
+                .build();
+        consistentMap.addListener(event -> {
+            switch (event.type()) {
+                case INSERT:
+                    Versioned<FileMetadata> tmp1 = event.newValue();
+                    FileMetadata fileMetadata1 = tmp1.value();
+                    if (!clusterProperties.getLocal().equals(fileMetadata1.getAddSourceNode())) {
+                        logger.info("{} Event Info:{}", MapEvent.Type.INSERT.name(), JsonUtil.toJson(fileMetadata1, true));
+                        ClusterProperties.ClusterNode clusterNode = mapAtomicReference.get().get(fileMetadata1.getAddSourceNode());
+                        long checkSum = syncFile(clusterProperties, clusterNode, fileMetadata1);
+                        if (fileMetadata1.getCheckSum() == checkSum) {
+                            updateAddTarget(clusterProperties, MetadataService.getKey(fileMetadata1), MapEvent.Type.INSERT.name());
                         }
                     }
-                } catch (Exception e) {
-                    logger.warn("同步失败:{}", JsonUtil.toJson(message, true), e);
-                }
-            }
-            return CompletableFuture.completedFuture(message);
-        }, serializer::encode).join();
-
-        atomix.messagingService().<FileMetadata, FileMetadata>subscribe(deleteTopicName, serializer::decode, message -> {
-            FileService.delete(clusterProperties, message);
-            if (!clusterProperties.getLocal().equals(message.getRemoveSourceNode())) {
-                for (int i = 0; i < clusterProperties.getNode().size(); i++) {
-                    try {
-                        Thread.sleep(RandomUtils.nextInt(i, i * 1000 + 10));
-                    } catch (InterruptedException e) {
-                        logger.warn("随机暂停失败", e);
+                case UPDATE:
+                    Versioned<FileMetadata> tmp2 = event.newValue();
+                    Versioned<FileMetadata> tmp3 = event.oldValue();
+                    FileMetadata fileMetadata2 = tmp2.value();
+                    String addSourceNode = fileMetadata2.getAddSourceNode();
+                    Set<String> addTargetNodes = fileMetadata2.getAddTargetNodes();
+                    String removeSourceNode = fileMetadata2.getRemoveSourceNode();
+                    Set<String> removeTargetNodes = fileMetadata2.getRemoveTargetNodes();
+                    if (tmp3 != null && removeSourceNode == null
+                            && !clusterProperties.getLocal().equals(addSourceNode)
+                            && !addTargetNodes.contains(clusterProperties.getLocal())) {
+                        FileMetadata fileMetadata3 = tmp3.value();
+                        logger.info("{} Event Info:\nOldValue:{}\nNewValue:{}", MapEvent.Type.UPDATE.name(), JsonUtil.toJson(fileMetadata3, true),
+                                JsonUtil.toJson(fileMetadata2, true));
+                        if (fileMetadata2.getCheckSum() != FileService.checkFile(clusterProperties, fileMetadata2)) {
+                            ClusterProperties.ClusterNode clusterNode = mapAtomicReference.get().get(fileMetadata2.getAddSourceNode());
+                            long checkSum = syncFile(clusterProperties, clusterNode, fileMetadata2);
+                            if (fileMetadata2.getCheckSum() == checkSum) {
+                                updateAddTarget(clusterProperties, MetadataService.getKey(fileMetadata2), MapEvent.Type.UPDATE.name());
+                            }
+                        } else {
+                            updateAddTarget(clusterProperties, MetadataService.getKey(fileMetadata2), MapEvent.Type.UPDATE.name());
+                        }
+                    } else if (tmp3 != null && removeSourceNode != null && !clusterProperties.getLocal().equals(removeSourceNode) && !removeTargetNodes.contains(clusterProperties.getLocal())) {
+                        FileMetadata fileMetadata3 = tmp3.value();
+                        logger.info("{} Event Info:\nOldValue:{}\nNewValue:{}", MapEvent.Type.UPDATE.name(), JsonUtil.toJson(fileMetadata3, true),
+                                JsonUtil.toJson(fileMetadata2, true));
+                        String key = MetadataService.getKey(fileMetadata2);
+                        FileService.delete(clusterProperties, fileMetadata2);
+                        updateRemoveTarget(clusterProperties, key);
                     }
-                    if (updateRemoveTarget(clusterProperties, atomix, MetadataService.getId(message))) {
-                        break;
-                    }
-                }
             }
-            return CompletableFuture.completedFuture(message);
-        }, serializer::encode).join();
+        });
         return atomix;
     }
 
-    public static ConsistentMap<String, FileMetadata> getConsistentMap(Atomix atomix) {
-        if (consistentMap == null) {
-            synchronized (YfsConfig.class) {
-                if (consistentMap == null) {
-                    consistentMap = atomix.<String, FileMetadata>consistentMapBuilder(mapName)
-                            .withPersistence(Persistence.PERSISTENT)
-                            .withSerializer(serializer)
-                            .withBackups(2)
-                            .withRetryDelay(Duration.ofSeconds(1))
-                            .withMaxRetries(3)
-                            .build();
-                }
-            }
-        }
-        return consistentMap;
-    }
-
-    public static void broadcastAddEvent(Atomix atomix, FileMetadata fileMetadata) {
-        atomix.messagingService().broadcast(addTopicName, fileMetadata, serializer::encode);
-    }
-
-    public static void broadcastDeleteEvent(Atomix atomix, FileMetadata fileMetadata) {
-        atomix.messagingService().broadcast(deleteTopicName, fileMetadata, serializer::encode);
-    }
-
-    private static boolean updateAddTarget(ClusterProperties clusterProperties, Atomix atomix, String key) {
+    private static long syncFile(ClusterProperties clusterProperties, ClusterProperties.ClusterNode clusterNode, FileMetadata fileMetadata) {
+        String url = "http://" + clusterNode.getHost() + ":" + clusterNode.getHttp_port() + "/" + MetadataService.getKey(fileMetadata);
+        HttpUriRequest httpUriRequest = new HttpGet(url);
+        String id = MetadataService.getKey(fileMetadata);
+        long checkSum = 0L;
         try {
-            Versioned<FileMetadata> tmp = getConsistentMap(atomix).get(key);
-            long version = tmp.version();
-            FileMetadata fileMetadata = SerializationUtils.clone(tmp.value());
-            fileMetadata.getAddTargetNodes().add(clusterProperties.getLocal());
-            boolean result = getConsistentMap(atomix).replace(key, version, fileMetadata);
-            if (result == true) {
-                logger.info("updateAddTarget:{}", JsonUtil.toJson(fileMetadata, true));
-            }
-            return result;
+            HttpResponse response = httpClient.execute(httpUriRequest);
+            checkSum = FileService.store(clusterProperties, fileMetadata, response);
+            logger.info("Sync Success:{}", id);
         } catch (Exception e) {
-            logger.warn(e.toString());
-            return false;
+            logger.warn("Sync Failure:{}", id, e);
         }
+        return checkSum;
     }
 
-    private static boolean updateRemoveTarget(ClusterProperties clusterProperties, Atomix atomix, String key) {
+    private static boolean updateAddTarget(ClusterProperties clusterProperties, String key, String eventType) {
+        boolean result = false;
+        FileMetadata fileMetadata = null;
         try {
-            Versioned<FileMetadata> tmp = getConsistentMap(atomix).get(key);
+            Versioned<FileMetadata> tmp = consistentMap.get(key);
             long version = tmp.version();
-            FileMetadata fileMetadata = SerializationUtils.clone(tmp.value());
+            fileMetadata = SerializationUtils.clone(tmp.value());
+            fileMetadata.getAddTargetNodes().add(clusterProperties.getLocal());
+            result = consistentMap.replace(key, version, fileMetadata);
+        } catch (Exception e) {
+            logger.warn("{} UpdateAddTarget Failure:{}", eventType, key, e);
+        }
+        if (result == true) {
+            logger.info("{} UpdateAddTarget Info:{}", eventType, JsonUtil.toJson(fileMetadata, true));
+            logger.info("{} UpdateAddTarget Success:{}", eventType, key);
+        }
+        return result;
+    }
+
+    private static boolean updateRemoveTarget(ClusterProperties clusterProperties, String key) {
+        boolean result = false;
+        FileMetadata fileMetadata = null;
+        try {
+            Versioned<FileMetadata> tmp = consistentMap.get(key);
+            long version = tmp.version();
+            fileMetadata = SerializationUtils.clone(tmp.value());
             fileMetadata.getRemoveTargetNodes().add(clusterProperties.getLocal());
             if (fileMetadata.getRemoveTargetNodes().size() == clusterProperties.getNode().size() - 1) {
-                getConsistentMap(atomix).remove(key);
-                logger.info("updateRemoveTarget:{}", JsonUtil.toJson(fileMetadata, true));
-                return true;
+                consistentMap.remove(key);
+                result = true;
             } else {
-                boolean result = getConsistentMap(atomix).replace(key, version, fileMetadata);
-                if (result == true) {
-                    logger.info("updateRemoveTarget:{}", JsonUtil.toJson(fileMetadata, true));
-                }
-                return result;
+                result = consistentMap.replace(key, version, fileMetadata);
             }
         } catch (Exception e) {
-            return false;
+            logger.warn("UpdateRemoveTarget Failure:{}", key, e);
         }
+        if (result == true) {
+            logger.info("UpdateRemoveTarget Info:{}", JsonUtil.toJson(fileMetadata, true));
+            logger.info("UpdateRemoveTarget Success:{}", key);
+        }
+        return result;
     }
 }

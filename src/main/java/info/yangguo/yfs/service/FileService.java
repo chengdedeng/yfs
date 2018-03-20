@@ -95,4 +95,18 @@ public class FileService {
                 .append("/")
                 .append(fileMetadata.getName());
     }
+
+    public static long checkFile(ClusterProperties clusterProperties, FileMetadata fileMetadata) {
+        long checkSum = 0L;
+        String filePath = getPath(clusterProperties, fileMetadata).toString();
+        try {
+            File file = new File(filePath);
+            if (file.exists()) {
+                checkSum = FileUtils.checksumCRC32(new File(filePath));
+            }
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+        return checkSum;
+    }
 }
