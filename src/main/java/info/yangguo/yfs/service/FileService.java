@@ -21,14 +21,21 @@ import info.yangguo.yfs.po.FileMetadata;
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.io.IOUtils;
 import org.apache.http.HttpResponse;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.web.multipart.commons.CommonsMultipartFile;
 
 import javax.servlet.http.HttpServletResponse;
 import java.io.*;
 import java.util.Date;
 import java.util.HashSet;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 public class FileService {
+    private static Logger logger = LoggerFactory.getLogger(FileService.class);
+    private static Map<String, Long> runningFile = new ConcurrentHashMap<>();
+
     public static FileMetadata store(ClusterProperties clusterProperties, CommonsMultipartFile commonsMultipartFile) throws IOException {
         FileMetadata fileMetadata = new FileMetadata();
         int block = (Hashing.consistentHash(Hashing.murmur3_32().hashBytes(commonsMultipartFile.getOriginalFilename().getBytes()), clusterProperties.getFiledata().getPartition()) + 1);
@@ -51,25 +58,35 @@ public class FileService {
 
 
     private static long store(ClusterProperties clusterProperties, FileMetadata fileMetadata, InputStream inputStream) throws IOException {
-        long checkSum;
+        long checkSum = 0L;
         StringBuilder fileDir = getDir(clusterProperties, fileMetadata);
-        File dir = new File(fileDir.toString());
-        if (!dir.exists()) {
-            FileUtils.forceMkdir(dir);
-        }
-        File file = new File(fileDir + "/" + fileMetadata.getName());
-        if (file.exists()) {
-            file.delete();
-            file = new File(fileDir + "/" + fileMetadata.getName());
-        }
-        try {
-            FileUtils.copyInputStreamToFile(inputStream, file);
-            checkSum = FileUtils.checksumCRC32(file);
-        } catch (IOException e) {
-            file.deleteOnExit();
-            throw e;
-        } finally {
-            IOUtils.closeQuietly(inputStream);
+        String filePath = fileDir.append("/").append(fileMetadata.getName()).toString();
+        if (runningFile.putIfAbsent(filePath, new Date().getTime()) == null) {
+            try {
+                File dirFile = new File(fileDir.toString());
+                if (!dirFile.exists()) {
+                    FileUtils.forceMkdir(dirFile);
+                }
+                File file = new File(filePath);
+                if (file.exists()) {
+                    file.delete();
+                    file = new File(filePath);
+                }
+                try {
+                    FileUtils.copyInputStreamToFile(inputStream, file);
+                    checkSum = FileUtils.checksumCRC32(file);
+                } catch (IOException e) {
+                    file.delete();
+                    throw e;
+                } finally {
+                    IOUtils.closeQuietly(inputStream);
+                }
+            } catch (Exception e) {
+                throw e;
+            } finally {
+                Long begin = runningFile.remove(filePath);
+                logger.info("File[{}] Time Consuming:{}", filePath, new Date().getTime() - begin);
+            }
         }
         return checkSum;
     }
