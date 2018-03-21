@@ -62,7 +62,7 @@ import java.util.stream.Collectors;
 public class YfsConfig {
     private static Logger logger = LoggerFactory.getLogger(YfsConfig.class);
     private static final String mapName = "file-metadata";
-    public static Serializer serializer = null;
+    private static Serializer serializer = null;
     public static ConsistentMap<String, FileMetadata> consistentMap = null;
     private static HttpClient httpClient;
 
@@ -172,8 +172,8 @@ public class YfsConfig {
                         FileMetadata fileMetadata3 = tmp3.value();
                         logger.info("{} Event Info:\nOldValue:{}\nNewValue:{}",
                                 MapEvent.Type.UPDATE.name(),
-                                JsonUtil.toJson(fileMetadata3, false),
-                                JsonUtil.toJson(fileMetadata2, false));
+                                JsonUtil.toJson(fileMetadata3, true),
+                                JsonUtil.toJson(fileMetadata2, true));
                         String key = MetadataService.getKey(fileMetadata2);
                         FileService.delete(clusterProperties, fileMetadata2);
                         updateRemoveTarget(clusterProperties, key);

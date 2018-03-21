@@ -37,7 +37,7 @@ public class Watchdog {
     private ClusterProperties clusterProperties;
 
     @Scheduled(initialDelayString = "${yfs.watchdog.initial_delay}", fixedDelayString = "${yfs.watchdog.fixed_delay}")
-    public void reportCurrentTime() {
+    public void watch() {
         logger.info("watchdog**************************");
         Collection<Versioned<FileMetadata>> metadata = YfsConfig.consistentMap.values();
         metadata.parallelStream().forEach(fileMetadataVersioned -> {

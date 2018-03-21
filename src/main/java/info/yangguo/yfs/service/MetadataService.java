@@ -36,10 +36,6 @@ public class MetadataService {
         }
     }
 
-    public static void delete(FileMetadata fileMetadata) {
-        YfsConfig.consistentMap.remove(getKey(fileMetadata));
-    }
-
 
     public static String getKey(String group, String partition, String name) {
         StringBuilder stringBuilder = new StringBuilder();
@@ -54,12 +50,5 @@ public class MetadataService {
 
     public static String getKey(FileMetadata fileMetadata) {
         return getKey(fileMetadata.getGroup(), String.valueOf(fileMetadata.getPartition()), fileMetadata.getName());
-    }
-
-    public static FileMetadata getFileMetadata(FileMetadata fileMetadata) {
-        String key = getKey(fileMetadata);
-        Versioned<FileMetadata> tmp = YfsConfig.consistentMap.get(key);
-        fileMetadata = tmp.value();
-        return fileMetadata;
     }
 }
