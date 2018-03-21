@@ -16,6 +16,7 @@
 package info.yangguo.yfs.controller;
 
 import info.yangguo.yfs.config.ClusterProperties;
+import info.yangguo.yfs.config.YfsConfig;
 import info.yangguo.yfs.dto.Result;
 import info.yangguo.yfs.dto.ResultCode;
 import info.yangguo.yfs.po.FileMetadata;
@@ -36,6 +37,7 @@ import org.springframework.web.multipart.commons.CommonsMultipartFile;
 
 import javax.servlet.http.HttpServletResponse;
 import java.net.URLEncoder;
+import java.util.Map;
 
 @Controller
 public class FileController {
@@ -86,7 +88,7 @@ public class FileController {
             result.setCode(ResultCode.C500.getCode());
             result.setValue(ResultCode.C500.getDesc());
         }
-        return JsonUtil.toJson(result,true);
+        return JsonUtil.toJson(result, true);
     }
 
     @ApiOperation(value = "{group}/{partition}/{name:.+}")
@@ -103,5 +105,21 @@ public class FileController {
         } catch (Exception e) {
             logger.error("file:{}下载失败:{}", JsonUtil.toJson(fileMetadata, true), e);
         }
+    }
+
+    @ApiOperation(value = "${yfs.group}/metadata")
+    @RequestMapping(value = "${yfs.group}/metadata", method = {RequestMethod.GET})
+    @ResponseBody
+    public Result metadata() {
+        Result result = new Result<>();
+        try {
+            Map<String, FileMetadata> metadata = YfsConfig.consistentMap.asJavaMap();
+            result.setValue(metadata);
+            result.setCode(ResultCode.C200.getCode());
+        } catch (Exception e) {
+            result.setCode(ResultCode.C500.getCode());
+            result.setValue(ResultCode.C500.getDesc());
+        }
+        return result;
     }
 }
