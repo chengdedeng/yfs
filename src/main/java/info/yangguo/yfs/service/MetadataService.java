@@ -22,7 +22,7 @@ import io.atomix.utils.time.Versioned;
 
 public class MetadataService {
     public static void create(ClusterProperties clusterProperties, FileMetadata fileMetadata) {
-        fileMetadata.setAddSourceNode(clusterProperties.getLocal());
+        fileMetadata.getAddNodes().add(clusterProperties.getLocal());
         YfsConfig.consistentMap.put(getKey(fileMetadata), fileMetadata);
     }
 
@@ -31,7 +31,7 @@ public class MetadataService {
         if (tmp != null) {
             long version = tmp.version();
             fileMetadata = tmp.value();
-            fileMetadata.setRemoveSourceNode(clusterProperties.getLocal());
+            fileMetadata.getRemoveNodes().add(clusterProperties.getLocal());
             YfsConfig.consistentMap.replace(getKey(fileMetadata), version, fileMetadata);
         }
     }

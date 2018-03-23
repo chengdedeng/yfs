@@ -44,8 +44,8 @@ public class FileService {
         fileMetadata.setName(commonsMultipartFile.getOriginalFilename());
         fileMetadata.setSize(commonsMultipartFile.getSize());
         fileMetadata.setPartition(block);
-        fileMetadata.setAddTargetNodes(new HashSet<>());
-        fileMetadata.setRemoveTargetNodes(new HashSet<>());
+        fileMetadata.setAddNodes(new HashSet<>());
+        fileMetadata.setRemoveNodes(new HashSet<>());
 
         long checkSum = store(clusterProperties, fileMetadata, commonsMultipartFile.getInputStream());
         fileMetadata.setCheckSum(checkSum);

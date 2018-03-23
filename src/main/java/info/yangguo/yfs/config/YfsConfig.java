@@ -15,7 +15,6 @@
  */
 package info.yangguo.yfs.config;
 
-import com.google.common.collect.Maps;
 import info.yangguo.yfs.po.FileMetadata;
 import info.yangguo.yfs.service.FileService;
 import info.yangguo.yfs.service.MetadataService;
@@ -52,9 +51,9 @@ import org.springframework.context.annotation.Configuration;
 import java.io.File;
 import java.time.Duration;
 import java.util.Date;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 
 @Configuration
@@ -65,6 +64,7 @@ public class YfsConfig {
     private static Serializer serializer = null;
     public static ConsistentMap<String, FileMetadata> consistentMap = null;
     private static HttpClient httpClient;
+    private static Map<String, ClusterProperties.ClusterNode> clusterNodeMap = new HashMap<>();
 
     static {
         serializer = Serializer.using(KryoNamespace.builder()
@@ -94,10 +94,9 @@ public class YfsConfig {
 
     @Bean
     public Atomix getAtomix() {
-        AtomicReference<Map<String, ClusterProperties.ClusterNode>> mapAtomicReference = new AtomicReference<>(Maps.newHashMap());
         Atomix.Builder builder = Atomix.builder();
         clusterProperties.getNode().stream().forEach(clusterNode -> {
-            mapAtomicReference.get().put(clusterNode.getId(), clusterNode);
+            clusterNodeMap.put(clusterNode.getId(), clusterNode);
             if (clusterNode.getId().equals(clusterProperties.getLocal())) {
                 builder
                         .withLocalNode(Node.builder(clusterNode.getId())
@@ -133,42 +132,37 @@ public class YfsConfig {
                 case INSERT:
                     Versioned<FileMetadata> tmp1 = event.newValue();
                     FileMetadata fileMetadata1 = tmp1.value();
-                    if (!clusterProperties.getLocal().equals(fileMetadata1.getAddSourceNode())) {
+                    if (!fileMetadata1.getAddNodes().contains(clusterProperties.getLocal())) {
                         logger.info("{} Event Info:\n{}",
                                 MapEvent.Type.INSERT.name(),
                                 JsonUtil.toJson(fileMetadata1, true));
-                        ClusterProperties.ClusterNode clusterNode = mapAtomicReference.get().get(fileMetadata1.getAddSourceNode());
-                        long checkSum = syncFile(clusterProperties, clusterNode, fileMetadata1);
+                        long checkSum = syncFile(clusterProperties, fileMetadata1.getAddNodes(), fileMetadata1);
                         if (fileMetadata1.getCheckSum() == checkSum) {
-                            updateAddTarget(clusterProperties, MetadataService.getKey(fileMetadata1), MapEvent.Type.INSERT.name());
+                            updateAddNodes(clusterProperties, MetadataService.getKey(fileMetadata1), MapEvent.Type.INSERT.name());
                         }
                     }
                 case UPDATE:
                     Versioned<FileMetadata> tmp2 = event.newValue();
                     Versioned<FileMetadata> tmp3 = event.oldValue();
                     FileMetadata fileMetadata2 = tmp2.value();
-                    String addSourceNode = fileMetadata2.getAddSourceNode();
-                    Set<String> addTargetNodes = fileMetadata2.getAddTargetNodes();
-                    String removeSourceNode = fileMetadata2.getRemoveSourceNode();
-                    Set<String> removeTargetNodes = fileMetadata2.getRemoveTargetNodes();
-                    if (tmp3 != null && removeSourceNode == null
-                            && !clusterProperties.getLocal().equals(addSourceNode)
-                            && !addTargetNodes.contains(clusterProperties.getLocal())) {
+                    Set<String> addNodes = fileMetadata2.getAddNodes();
+                    Set<String> removeNodes = fileMetadata2.getRemoveNodes();
+                    if (tmp3 != null && removeNodes.size() == 0
+                            && !addNodes.contains(clusterProperties.getLocal())) {
                         FileMetadata fileMetadata3 = tmp3.value();
                         logger.info("{} Event Info:\nOldValue:{}\nNewValue:{}",
                                 MapEvent.Type.UPDATE.name(),
                                 JsonUtil.toJson(fileMetadata3, true),
                                 JsonUtil.toJson(fileMetadata2, true));
                         if (fileMetadata2.getCheckSum() != FileService.checkFile(clusterProperties, fileMetadata2)) {
-                            ClusterProperties.ClusterNode clusterNode = mapAtomicReference.get().get(fileMetadata2.getAddSourceNode());
-                            long checkSum = syncFile(clusterProperties, clusterNode, fileMetadata2);
+                            long checkSum = syncFile(clusterProperties, addNodes, fileMetadata2);
                             if (fileMetadata2.getCheckSum() == checkSum) {
-                                updateAddTarget(clusterProperties, MetadataService.getKey(fileMetadata2), MapEvent.Type.UPDATE.name());
+                                updateAddNodes(clusterProperties, MetadataService.getKey(fileMetadata2), MapEvent.Type.UPDATE.name());
                             }
                         } else {
-                            updateAddTarget(clusterProperties, MetadataService.getKey(fileMetadata2), MapEvent.Type.UPDATE.name());
+                            updateAddNodes(clusterProperties, MetadataService.getKey(fileMetadata2), MapEvent.Type.UPDATE.name());
                         }
-                    } else if (tmp3 != null && removeSourceNode != null && !clusterProperties.getLocal().equals(removeSourceNode) && !removeTargetNodes.contains(clusterProperties.getLocal())) {
+                    } else if (removeNodes.size() > 0 && !removeNodes.contains(clusterProperties.getLocal())) {
                         FileMetadata fileMetadata3 = tmp3.value();
                         logger.info("{} Event Info:\nOldValue:{}\nNewValue:{}",
                                 MapEvent.Type.UPDATE.name(),
@@ -176,67 +170,71 @@ public class YfsConfig {
                                 JsonUtil.toJson(fileMetadata2, true));
                         String key = MetadataService.getKey(fileMetadata2);
                         FileService.delete(clusterProperties, fileMetadata2);
-                        updateRemoveTarget(clusterProperties, key);
+                        updateRemoveNodes(clusterProperties, key);
                     }
             }
         });
         return atomix;
     }
 
-    private static long syncFile(ClusterProperties clusterProperties, ClusterProperties.ClusterNode clusterNode, FileMetadata fileMetadata) {
-        String url = "http://" + clusterNode.getHost() + ":" + clusterNode.getHttp_port() + "/" + MetadataService.getKey(fileMetadata);
-        HttpUriRequest httpUriRequest = new HttpGet(url);
-        String id = MetadataService.getKey(fileMetadata);
+    private static long syncFile(ClusterProperties clusterProperties, Set<String> addNodes, FileMetadata fileMetadata) {
         long checkSum = 0L;
-        try {
-            HttpResponse response = httpClient.execute(httpUriRequest);
-            checkSum = FileService.store(clusterProperties, fileMetadata, response);
-            logger.info("Sync Success:{}", id);
-        } catch (Exception e) {
-            logger.warn("Sync Failure:{}", id, e);
+        for (String addNode : addNodes) {
+            ClusterProperties.ClusterNode clusterNode = clusterNodeMap.get(addNode);
+            String url = "http://" + clusterNode.getHost() + ":" + clusterNode.getHttp_port() + "/" + MetadataService.getKey(fileMetadata);
+            HttpUriRequest httpUriRequest = new HttpGet(url);
+            String id = MetadataService.getKey(fileMetadata);
+            try {
+                HttpResponse response = httpClient.execute(httpUriRequest);
+                checkSum = FileService.store(clusterProperties, fileMetadata, response);
+                logger.info("Sync Success:{}", id);
+                break;
+            } catch (Exception e) {
+                logger.warn("Sync Failure:{}", id, e);
+            }
         }
         return checkSum;
     }
 
-    private static boolean updateAddTarget(ClusterProperties clusterProperties, String key, String eventType) {
+    private static boolean updateAddNodes(ClusterProperties clusterProperties, String key, String eventType) {
         boolean result = false;
         FileMetadata fileMetadata = null;
         try {
             Versioned<FileMetadata> tmp = consistentMap.get(key);
             long version = tmp.version();
             fileMetadata = tmp.value();
-            fileMetadata.getAddTargetNodes().add(clusterProperties.getLocal());
+            fileMetadata.getAddNodes().add(clusterProperties.getLocal());
             result = consistentMap.replace(key, version, fileMetadata);
         } catch (Exception e) {
-            logger.warn("{} UpdateAddTarget Failure:{}", eventType, key, e);
+            logger.warn("{} UpdateAddNodes Failure:{}", eventType, key, e);
         }
         if (result == true) {
-            logger.info("{} UpdateAddTarget Info:{}", eventType, JsonUtil.toJson(fileMetadata, true));
-            logger.info("{} UpdateAddTarget Success:{}", eventType, key);
+            logger.info("{} UpdateAddNodes Info:{}", eventType, JsonUtil.toJson(fileMetadata, true));
+            logger.info("{} UpdateAddNodes Success:{}", eventType, key);
         }
         return result;
     }
 
-    private static boolean updateRemoveTarget(ClusterProperties clusterProperties, String key) {
+    private static boolean updateRemoveNodes(ClusterProperties clusterProperties, String key) {
         boolean result = false;
         FileMetadata fileMetadata = null;
         try {
             Versioned<FileMetadata> tmp = consistentMap.get(key);
             long version = tmp.version();
             fileMetadata = tmp.value();
-            fileMetadata.getRemoveTargetNodes().add(clusterProperties.getLocal());
-            if (fileMetadata.getRemoveTargetNodes().size() == clusterProperties.getNode().size() - 1) {
+            fileMetadata.getRemoveNodes().add(clusterProperties.getLocal());
+            if (fileMetadata.getRemoveNodes().size() == clusterProperties.getNode().size()) {
                 consistentMap.remove(key);
                 result = true;
             } else {
                 result = consistentMap.replace(key, version, fileMetadata);
             }
         } catch (Exception e) {
-            logger.warn("UpdateRemoveTarget Failure:{}", key, e);
+            logger.warn("UpdateRemoveNodes Failure:{}", key, e);
         }
         if (result == true) {
-            logger.info("UpdateRemoveTarget Info:{}", JsonUtil.toJson(fileMetadata, true));
-            logger.info("UpdateRemoveTarget Success:{}", key);
+            logger.info("UpdateRemoveNodes Info:{}", JsonUtil.toJson(fileMetadata, true));
+            logger.info("UpdateRemoveNodes Success:{}", key);
         }
         return result;
     }

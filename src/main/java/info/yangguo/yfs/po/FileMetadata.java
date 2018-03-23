@@ -31,8 +31,6 @@ public class FileMetadata implements Serializable {
     private int partition;
     private Date createTime;
     private long checkSum;
-    private String addSourceNode;
-    private Set<String> addTargetNodes;
-    private String removeSourceNode;
-    private Set<String> removeTargetNodes;
+    private Set<String> addNodes;
+    private Set<String> removeNodes;
 }

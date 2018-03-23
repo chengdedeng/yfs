@@ -26,9 +26,6 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 import java.util.Collection;
-import java.util.Date;
-import java.util.HashSet;
-import java.util.Set;
 
 @Component
 public class Watchdog {
@@ -42,22 +39,12 @@ public class Watchdog {
         Collection<Versioned<FileMetadata>> metadata = YfsConfig.consistentMap.values();
         metadata.parallelStream().forEach(fileMetadataVersioned -> {
             FileMetadata fileMetadata = fileMetadataVersioned.value();
-            if (new Date().getTime() - fileMetadata.getCreateTime().getTime() > 1000 * 60) {
-                Set<String> addSet = new HashSet<>();
-                addSet.add(fileMetadata.getAddSourceNode());
-                addSet.addAll(fileMetadata.getAddTargetNodes());
-                Set<String> removeSet = new HashSet<>();
-                if (fileMetadata.getRemoveSourceNode() != null) {
-                    removeSet.add(fileMetadata.getRemoveSourceNode());
-                }
-                removeSet.addAll(fileMetadata.getRemoveTargetNodes());
-                String key = MetadataService.getKey(fileMetadata);
-                long version = fileMetadataVersioned.version();
-                if ((removeSet.size() > 0 && !removeSet.contains(clusterProperties.getLocal()))
-                        || (removeSet.size() == 0 && !addSet.contains(clusterProperties.getLocal()))) {
-                    logger.info("Resyn:\n{}", JsonUtil.toJson(fileMetadata, true));
-                    YfsConfig.consistentMap.replace(key, version, fileMetadata);
-                }
+            String key = MetadataService.getKey(fileMetadata);
+            long version = fileMetadataVersioned.version();
+            if ((fileMetadata.getRemoveNodes().size() > 0 && !fileMetadata.getRemoveNodes().contains(clusterProperties.getLocal()))
+                    || (fileMetadata.getRemoveNodes().size() == 0 && !fileMetadata.getAddNodes().contains(clusterProperties.getLocal()))) {
+                logger.info("Resyn:\n{}", JsonUtil.toJson(fileMetadata, true));
+                YfsConfig.consistentMap.replace(key, version, fileMetadata);
             }
         });
         logger.info("**************************watchdog");
