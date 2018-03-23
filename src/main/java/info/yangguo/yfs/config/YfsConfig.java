@@ -186,9 +186,11 @@ public class YfsConfig {
             String id = MetadataService.getKey(fileMetadata);
             try {
                 HttpResponse response = httpClient.execute(httpUriRequest);
-                checkSum = FileService.store(clusterProperties, fileMetadata, response);
-                logger.info("Sync Success:{}", id);
-                break;
+                if (200 == response.getStatusLine().getStatusCode()) {
+                    checkSum = FileService.store(clusterProperties, fileMetadata, response);
+                    logger.info("Sync Success:{}", id);
+                    break;
+                }
             } catch (Exception e) {
                 logger.warn("Sync Failure:{}", id, e);
             }
