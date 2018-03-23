@@ -17,6 +17,7 @@ package info.yangguo.yfs.dto;
 
 public enum ResultCode {
     C200(200, "Success"),
+    C202(202, "Accepted"),
     C403(403, "Forbidden"),
     C500(500, "Internal Server Error");
 

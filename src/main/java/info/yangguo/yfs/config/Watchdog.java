@@ -43,7 +43,7 @@ public class Watchdog {
             long version = fileMetadataVersioned.version();
             if ((fileMetadata.getRemoveNodes().size() > 0 && !fileMetadata.getRemoveNodes().contains(clusterProperties.getLocal()))
                     || (fileMetadata.getRemoveNodes().size() == 0 && !fileMetadata.getAddNodes().contains(clusterProperties.getLocal()))) {
-                logger.info("Resyn:\n{}", JsonUtil.toJson(fileMetadata, true));
+                logger.info("Resync:\n{}", JsonUtil.toJson(fileMetadata, true));
                 YfsConfig.consistentMap.replace(key, version, fileMetadata);
             }
         });

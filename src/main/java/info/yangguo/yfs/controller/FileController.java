@@ -37,6 +37,7 @@ import org.springframework.web.multipart.commons.CommonsMultipartFile;
 
 import javax.servlet.http.HttpServletResponse;
 import java.net.URLEncoder;
+import java.util.HashSet;
 import java.util.Map;
 
 @Controller
@@ -69,12 +70,12 @@ public class FileController {
         return result;
     }
 
-    @ApiOperation(value = "{group}/{partition}/{name:.+}")
-    @RequestMapping(value = "{group}/{partition}/{name:.+}", method = {RequestMethod.DELETE})
+    @ApiOperation(value = "${yfs.group}/{partition}/{name:.+}")
+    @RequestMapping(value = "${yfs.group}/{partition}/{name:.+}", method = {RequestMethod.DELETE})
     @ResponseBody
-    public String delete(@PathVariable String group, @PathVariable String partition, @PathVariable String name) {
+    public String delete(@PathVariable String partition, @PathVariable String name) {
         FileMetadata fileMetadata = new FileMetadata();
-        fileMetadata.setGroup(group);
+        fileMetadata.setGroup(clusterProperties.getGroup());
         fileMetadata.setPartition(Integer.valueOf(partition));
         fileMetadata.setName(name);
         logger.info("delete file:{}", MetadataService.getKey(fileMetadata));
@@ -91,11 +92,11 @@ public class FileController {
         return JsonUtil.toJson(result, true);
     }
 
-    @ApiOperation(value = "{group}/{partition}/{name:.+}")
-    @RequestMapping(value = "{group}/{partition}/{name:.+}", method = {RequestMethod.GET})
-    public void download(@PathVariable String group, @PathVariable String partition, @PathVariable String name, HttpServletResponse response) {
+    @ApiOperation(value = "${yfs.group}/{partition}/{name:.+}")
+    @RequestMapping(value = "${yfs.group}/{partition}/{name:.+}", method = {RequestMethod.GET})
+    public void download(@PathVariable String partition, @PathVariable String name, HttpServletResponse response) {
         FileMetadata fileMetadata = new FileMetadata();
-        fileMetadata.setGroup(group);
+        fileMetadata.setGroup(clusterProperties.getGroup());
         fileMetadata.setPartition(Integer.valueOf(partition));
         fileMetadata.setName(name);
         try {
@@ -116,6 +117,38 @@ public class FileController {
             Map<String, FileMetadata> metadata = YfsConfig.consistentMap.asJavaMap();
             result.setValue(metadata);
             result.setCode(ResultCode.C200.getCode());
+        } catch (Exception e) {
+            result.setCode(ResultCode.C500.getCode());
+            result.setValue(ResultCode.C500.getDesc());
+        }
+        return result;
+    }
+
+    @ApiOperation(value = "admin/${yfs.group}/resync/{node}")
+    @RequestMapping(value = "admin/${yfs.group}/resync/{node}", method = {RequestMethod.PATCH})
+    @ResponseBody
+    public Result resync(@PathVariable String node) {
+        Result result = new Result<>();
+        HashSet<String> anomalyFile = new HashSet<>();
+        try {
+            YfsConfig.consistentMap.values().stream().forEach(fileMetadataVersioned -> {
+                long version = fileMetadataVersioned.version();
+                FileMetadata fileMetadata = fileMetadataVersioned.value();
+                fileMetadata.getAddNodes().remove(node);
+                try {
+                    if (false == YfsConfig.consistentMap.replace(MetadataService.getKey(fileMetadata), version, fileMetadata)) {
+                        anomalyFile.add(MetadataService.getKey(fileMetadata));
+                    }
+                } catch (Exception e) {
+                    anomalyFile.add(MetadataService.getKey(fileMetadata));
+                }
+            });
+            if (anomalyFile.size() == 0) {
+                result.setCode(ResultCode.C200.getCode());
+            } else {
+                result.setCode(ResultCode.C202.getCode());
+                result.setValue(anomalyFile);
+            }
         } catch (Exception e) {
             result.setCode(ResultCode.C500.getCode());
             result.setValue(ResultCode.C500.getDesc());
