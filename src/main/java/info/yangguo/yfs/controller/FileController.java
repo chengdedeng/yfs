@@ -23,6 +23,7 @@ import info.yangguo.yfs.po.FileMetadata;
 import info.yangguo.yfs.service.FileService;
 import info.yangguo.yfs.service.MetadataService;
 import info.yangguo.yfs.utils.JsonUtil;
+import io.atomix.utils.time.Versioned;
 import io.swagger.annotations.ApiOperation;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -37,6 +38,7 @@ import org.springframework.web.multipart.commons.CommonsMultipartFile;
 
 import javax.servlet.http.HttpServletResponse;
 import java.net.URLEncoder;
+import java.util.HashSet;
 import java.util.Map;
 
 @Controller
@@ -45,44 +47,54 @@ public class FileController {
     @Autowired
     private ClusterProperties clusterProperties;
 
-    @ApiOperation(value = "api/file")
+    @ApiOperation(value = "api/file/{qos}")
     @ResponseBody
-    @RequestMapping(value = "api/file", method = {RequestMethod.POST})
-    public Result upload(MultipartFile file) {
+    @RequestMapping(value = "api/file/{qos}", method = {RequestMethod.POST})
+    public Result upload(@PathVariable int qos, MultipartFile file) {
         logger.info("upload file:{}", file.getOriginalFilename());
         Result result = new Result();
         FileMetadata fileMetadata = null;
-        try {
-            CommonsMultipartFile commonsMultipartFile = (CommonsMultipartFile) file;
-            fileMetadata = FileService.store(clusterProperties, commonsMultipartFile);
-            MetadataService.create(clusterProperties, fileMetadata);
-            result.setCode(ResultCode.C200.code);
-            result.setValue(fileMetadata.getGroup() + "/" + fileMetadata.getPartition() + "/" + fileMetadata.getName());
-        } catch (Exception e) {
-            logger.error("upload api:{}", e);
-            if (fileMetadata != null) {
-                FileService.delete(clusterProperties, fileMetadata);
+        if (qos < 1 || qos > clusterProperties.getNode().size()) {
+            result.setCode(ResultCode.C403.getCode());
+            result.setValue(ResultCode.C403.getDesc());
+        } else {
+            try {
+                CommonsMultipartFile commonsMultipartFile = (CommonsMultipartFile) file;
+                fileMetadata = FileService.store(clusterProperties, commonsMultipartFile);
+                boolean qosResult = MetadataService.create(clusterProperties, fileMetadata, qos);
+                if (qosResult == true) {
+                    result.setCode(ResultCode.C200.code);
+                } else {
+                    result.setCode(ResultCode.C202.code);
+                }
+                result.setValue(fileMetadata.getGroup() + "/" + fileMetadata.getPartition() + "/" + fileMetadata.getName());
+            } catch (Exception e) {
+                logger.error("upload api:{}", e);
+                if (fileMetadata != null) {
+                    FileService.delete(clusterProperties, fileMetadata);
+                }
+                result.setCode(ResultCode.C500.getCode());
+                result.setValue(ResultCode.C500.getDesc());
             }
-            result.setCode(ResultCode.C500.getCode());
-            result.setValue(ResultCode.C500.getDesc());
         }
         return result;
     }
 
-    @ApiOperation(value = "{group}/{partition}/{name:.+}")
-    @RequestMapping(value = "{group}/{partition}/{name:.+}", method = {RequestMethod.DELETE})
+    @ApiOperation(value = "${yfs.group}/{partition}/{name:.+}")
+    @RequestMapping(value = "${yfs.group}/{partition}/{name:.+}", method = {RequestMethod.DELETE})
     @ResponseBody
-    public String delete(@PathVariable String group, @PathVariable String partition, @PathVariable String name) {
+    public String delete(@PathVariable String partition, @PathVariable String name) {
         FileMetadata fileMetadata = new FileMetadata();
-        fileMetadata.setGroup(group);
+        fileMetadata.setGroup(clusterProperties.getGroup());
         fileMetadata.setPartition(Integer.valueOf(partition));
         fileMetadata.setName(name);
         logger.info("delete file:{}", MetadataService.getKey(fileMetadata));
         Result result = new Result();
         try {
-            MetadataService.softDelete(clusterProperties, fileMetadata);
-            FileService.delete(clusterProperties, fileMetadata);
-            result.setCode(ResultCode.C200.code);
+            if (MetadataService.softDelete(clusterProperties, fileMetadata)) {
+                FileService.delete(clusterProperties, fileMetadata);
+                result.setCode(ResultCode.C200.code);
+            }
         } catch (Exception e) {
             logger.error("delete api:{}", e);
             result.setCode(ResultCode.C500.getCode());
@@ -91,11 +103,11 @@ public class FileController {
         return JsonUtil.toJson(result, true);
     }
 
-    @ApiOperation(value = "{group}/{partition}/{name:.+}")
-    @RequestMapping(value = "{group}/{partition}/{name:.+}", method = {RequestMethod.GET})
-    public void download(@PathVariable String group, @PathVariable String partition, @PathVariable String name, HttpServletResponse response) {
+    @ApiOperation(value = "${yfs.group}/{partition}/{name:.+}")
+    @RequestMapping(value = "${yfs.group}/{partition}/{name:.+}", method = {RequestMethod.GET})
+    public void download(@PathVariable String partition, @PathVariable String name, HttpServletResponse response) {
         FileMetadata fileMetadata = new FileMetadata();
-        fileMetadata.setGroup(group);
+        fileMetadata.setGroup(clusterProperties.getGroup());
         fileMetadata.setPartition(Integer.valueOf(partition));
         fileMetadata.setName(name);
         try {
@@ -121,5 +133,60 @@ public class FileController {
             result.setValue(ResultCode.C500.getDesc());
         }
         return result;
+    }
+
+    @ApiOperation(value = "admin/${yfs.group}/resync/{node}")
+    @RequestMapping(value = "admin/${yfs.group}/resync/{node}", method = {RequestMethod.PATCH})
+    @ResponseBody
+    public Result resyncNode(@PathVariable String node) {
+        Result result = new Result<>();
+        HashSet<String> anomalyFile = new HashSet<>();
+        try {
+            YfsConfig.consistentMap.values().stream().forEach(fileMetadataVersioned -> {
+                long version = fileMetadataVersioned.version();
+                FileMetadata fileMetadata = fileMetadataVersioned.value();
+                fileMetadata.getAddNodes().remove(node);
+                try {
+                    if (false == YfsConfig.consistentMap.replace(MetadataService.getKey(fileMetadata), version, fileMetadata)) {
+                        anomalyFile.add(MetadataService.getKey(fileMetadata));
+                    }
+                } catch (Exception e) {
+                    anomalyFile.add(MetadataService.getKey(fileMetadata));
+                }
+            });
+            if (anomalyFile.size() == 0) {
+                result.setCode(ResultCode.C200.getCode());
+            } else {
+                result.setCode(ResultCode.C202.getCode());
+                result.setValue(anomalyFile);
+            }
+        } catch (Exception e) {
+            result.setCode(ResultCode.C500.getCode());
+            result.setValue(ResultCode.C500.getDesc());
+        }
+        return result;
+    }
+
+    @ApiOperation(value = "admin/${yfs.group}/resync/{node}/{partition}/{name:.+}")
+    @RequestMapping(value = "admin/${yfs.group}/resync/{node}/{partition}/{name:.+}", method = {RequestMethod.PATCH})
+    @ResponseBody
+    public String resyncFile(@PathVariable String node, @PathVariable String partition, @PathVariable String name) {
+        Result result = new Result<>();
+        try {
+            String key = MetadataService.getKey(clusterProperties.getGroup(), partition, name);
+            Versioned<FileMetadata> versioned = YfsConfig.consistentMap.get(key);
+            long version = versioned.version();
+            FileMetadata fileMetadata = versioned.value();
+            fileMetadata.getAddNodes().remove(node);
+            if (false == YfsConfig.consistentMap.replace(key, version, fileMetadata)) {
+                result.setCode(ResultCode.C202.getCode());
+            } else {
+                result.setCode(ResultCode.C200.getCode());
+            }
+        } catch (Exception e) {
+            result.setCode(ResultCode.C500.getCode());
+            result.setValue(ResultCode.C500.getDesc());
+        }
+        return JsonUtil.toJson(result, true);
     }
 }

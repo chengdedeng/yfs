@@ -34,7 +34,7 @@ public class SwaggerConfig {
         return new Docket(DocumentationType.SWAGGER_2)
                 .select()
                 .apis(RequestHandlerSelectors.any())
-                .paths(PathSelectors.regex("/.*"))//此处配置需注意，需要暴露什么配置什么
+                .paths(PathSelectors.regex("/(api|group|admin).*"))
                 .build()
                 .apiInfo(apiInfo());
     }

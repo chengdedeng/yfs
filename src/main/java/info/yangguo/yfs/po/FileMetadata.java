@@ -19,8 +19,9 @@ import lombok.Getter;
 import lombok.Setter;
 
 import java.io.Serializable;
+import java.util.ArrayList;
 import java.util.Date;
-import java.util.Set;
+import java.util.List;
 
 @Getter
 @Setter
@@ -31,8 +32,6 @@ public class FileMetadata implements Serializable {
     private int partition;
     private Date createTime;
     private long checkSum;
-    private String addSourceNode;
-    private Set<String> addTargetNodes;
-    private String removeSourceNode;
-    private Set<String> removeTargetNodes;
+    private List<String> addNodes = new ArrayList<>();
+    private List<String> removeNodes = new ArrayList<>();
 }

@@ -28,7 +28,6 @@ import org.springframework.web.multipart.commons.CommonsMultipartFile;
 import javax.servlet.http.HttpServletResponse;
 import java.io.*;
 import java.util.Date;
-import java.util.HashSet;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -44,8 +43,6 @@ public class FileService {
         fileMetadata.setName(commonsMultipartFile.getOriginalFilename());
         fileMetadata.setSize(commonsMultipartFile.getSize());
         fileMetadata.setPartition(block);
-        fileMetadata.setAddTargetNodes(new HashSet<>());
-        fileMetadata.setRemoveTargetNodes(new HashSet<>());
 
         long checkSum = store(clusterProperties, fileMetadata, commonsMultipartFile.getInputStream());
         fileMetadata.setCheckSum(checkSum);
@@ -87,6 +84,8 @@ public class FileService {
                 Long begin = runningFile.remove(filePath);
                 logger.info("File[{}] Time Consuming:{}", filePath, new Date().getTime() - begin);
             }
+        } else {
+            throw new IOException(filePath + " In Sync");
         }
         return checkSum;
     }

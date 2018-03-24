@@ -27,6 +27,7 @@ import java.util.List;
 @Getter
 @Setter
 public class ClusterProperties {
+    private int qos_max_time;
     private long max_upload_size;
     private String group;
     private String local;
