@@ -15,6 +15,10 @@
  */
 package info.yangguo.yfs.config;
 
+import com.google.common.cache.Cache;
+import com.google.common.cache.CacheBuilder;
+import com.google.common.cache.RemovalListener;
+import com.google.common.cache.RemovalNotification;
 import info.yangguo.yfs.po.FileMetadata;
 import info.yangguo.yfs.service.FileService;
 import info.yangguo.yfs.service.MetadataService;
@@ -54,6 +58,8 @@ import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 @Configuration
@@ -65,6 +71,7 @@ public class YfsConfig {
     public static ConsistentMap<String, FileMetadata> consistentMap = null;
     private static HttpClient httpClient;
     private static Map<String, ClusterProperties.ClusterNode> clusterNodeMap = new HashMap<>();
+    public static Cache<String, CountDownLatch> cache;
 
     static {
         serializer = Serializer.using(KryoNamespace.builder()
@@ -86,6 +93,17 @@ public class YfsConfig {
         httpClient = HttpClientBuilder.create()
                 .setDefaultRequestConfig(requestConfig)
                 .setConnectionManager(connectionManager)
+                .build();
+
+        cache = CacheBuilder.newBuilder()
+                .maximumSize(1000)
+                .expireAfterWrite(300, TimeUnit.SECONDS)
+                .removalListener(new RemovalListener() {
+                    @Override
+                    public void onRemoval(RemovalNotification notification) {
+                        logger.debug("key:{} remove from cache", notification.getKey());
+                    }
+                })
                 .build();
     }
 
@@ -172,6 +190,13 @@ public class YfsConfig {
                         FileService.delete(clusterProperties, fileMetadata2);
                         updateRemoveNodes(clusterProperties, key);
                     }
+
+                    if (removeNodes.size() == 0 && addNodes.size() > 1 && clusterProperties.getLocal().equals(addNodes.get(0))) {
+                        CountDownLatch latch = cache.getIfPresent(MetadataService.getKey(fileMetadata2));
+                        if (latch != null) {
+                            latch.countDown();
+                        }
+                    }
             }
         });
         return atomix;
@@ -205,7 +230,9 @@ public class YfsConfig {
             Versioned<FileMetadata> tmp = consistentMap.get(key);
             long version = tmp.version();
             fileMetadata = tmp.value();
-            fileMetadata.getAddNodes().add(clusterProperties.getLocal());
+            if (!fileMetadata.getAddNodes().contains(clusterProperties.getLocal())) {
+                fileMetadata.getAddNodes().add(clusterProperties.getLocal());
+            }
             result = consistentMap.replace(key, version, fileMetadata);
         } catch (Exception e) {
             logger.warn("{} UpdateAddNodes Failure:{}", eventType, key, e);
@@ -224,7 +251,9 @@ public class YfsConfig {
             Versioned<FileMetadata> tmp = consistentMap.get(key);
             long version = tmp.version();
             fileMetadata = tmp.value();
-            fileMetadata.getRemoveNodes().add(clusterProperties.getLocal());
+            if (!fileMetadata.getRemoveNodes().contains(clusterProperties.getLocal())) {
+                fileMetadata.getRemoveNodes().add(clusterProperties.getLocal());
+            }
             if (fileMetadata.getRemoveNodes().size() == clusterProperties.getNode().size()) {
                 consistentMap.remove(key);
                 result = true;

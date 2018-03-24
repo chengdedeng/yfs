@@ -20,10 +20,21 @@ import info.yangguo.yfs.config.YfsConfig;
 import info.yangguo.yfs.po.FileMetadata;
 import io.atomix.utils.time.Versioned;
 
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+
 public class MetadataService {
-    public static void create(ClusterProperties clusterProperties, FileMetadata fileMetadata) {
+    public static boolean create(ClusterProperties clusterProperties, FileMetadata fileMetadata, int qos) throws InterruptedException {
+        boolean result = false;
         fileMetadata.getAddNodes().add(clusterProperties.getLocal());
+        CountDownLatch countDownLatch = new CountDownLatch(qos);
+        YfsConfig.cache.put(getKey(fileMetadata), countDownLatch);
         YfsConfig.consistentMap.put(getKey(fileMetadata), fileMetadata);
+        //Preventing network traffic from failing
+        countDownLatch.countDown();
+        result = countDownLatch.await(clusterProperties.getQos_max_time(), TimeUnit.SECONDS);
+        YfsConfig.cache.invalidate(getKey(fileMetadata));
+        return result;
     }
 
     public static boolean softDelete(ClusterProperties clusterProperties, FileMetadata fileMetadata) {

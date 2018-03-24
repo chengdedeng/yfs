@@ -47,26 +47,35 @@ public class FileController {
     @Autowired
     private ClusterProperties clusterProperties;
 
-    @ApiOperation(value = "api/file")
+    @ApiOperation(value = "api/file/{qos}")
     @ResponseBody
-    @RequestMapping(value = "api/file", method = {RequestMethod.POST})
-    public Result upload(MultipartFile file) {
+    @RequestMapping(value = "api/file/{qos}", method = {RequestMethod.POST})
+    public Result upload(@PathVariable int qos, MultipartFile file) {
         logger.info("upload file:{}", file.getOriginalFilename());
         Result result = new Result();
         FileMetadata fileMetadata = null;
-        try {
-            CommonsMultipartFile commonsMultipartFile = (CommonsMultipartFile) file;
-            fileMetadata = FileService.store(clusterProperties, commonsMultipartFile);
-            MetadataService.create(clusterProperties, fileMetadata);
-            result.setCode(ResultCode.C200.code);
-            result.setValue(fileMetadata.getGroup() + "/" + fileMetadata.getPartition() + "/" + fileMetadata.getName());
-        } catch (Exception e) {
-            logger.error("upload api:{}", e);
-            if (fileMetadata != null) {
-                FileService.delete(clusterProperties, fileMetadata);
+        if (qos < 1 || qos > clusterProperties.getNode().size()) {
+            result.setCode(ResultCode.C403.getCode());
+            result.setValue(ResultCode.C403.getDesc());
+        } else {
+            try {
+                CommonsMultipartFile commonsMultipartFile = (CommonsMultipartFile) file;
+                fileMetadata = FileService.store(clusterProperties, commonsMultipartFile);
+                boolean qosResult = MetadataService.create(clusterProperties, fileMetadata, qos);
+                if (qosResult == true) {
+                    result.setCode(ResultCode.C200.code);
+                } else {
+                    result.setCode(ResultCode.C202.code);
+                }
+                result.setValue(fileMetadata.getGroup() + "/" + fileMetadata.getPartition() + "/" + fileMetadata.getName());
+            } catch (Exception e) {
+                logger.error("upload api:{}", e);
+                if (fileMetadata != null) {
+                    FileService.delete(clusterProperties, fileMetadata);
+                }
+                result.setCode(ResultCode.C500.getCode());
+                result.setValue(ResultCode.C500.getDesc());
             }
-            result.setCode(ResultCode.C500.getCode());
-            result.setValue(ResultCode.C500.getDesc());
         }
         return result;
     }
