@@ -52,8 +52,8 @@ import java.io.File;
 import java.time.Duration;
 import java.util.Date;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.stream.Collectors;
 
 @Configuration
@@ -145,8 +145,8 @@ public class YfsConfig {
                     Versioned<FileMetadata> tmp2 = event.newValue();
                     Versioned<FileMetadata> tmp3 = event.oldValue();
                     FileMetadata fileMetadata2 = tmp2.value();
-                    Set<String> addNodes = fileMetadata2.getAddNodes();
-                    Set<String> removeNodes = fileMetadata2.getRemoveNodes();
+                    List<String> addNodes = fileMetadata2.getAddNodes();
+                    List<String> removeNodes = fileMetadata2.getRemoveNodes();
                     if (tmp3 != null && removeNodes.size() == 0
                             && !addNodes.contains(clusterProperties.getLocal())) {
                         FileMetadata fileMetadata3 = tmp3.value();
@@ -177,7 +177,7 @@ public class YfsConfig {
         return atomix;
     }
 
-    private static long syncFile(ClusterProperties clusterProperties, Set<String> addNodes, FileMetadata fileMetadata) {
+    private static long syncFile(ClusterProperties clusterProperties, List<String> addNodes, FileMetadata fileMetadata) {
         long checkSum = 0L;
         for (String addNode : addNodes) {
             ClusterProperties.ClusterNode clusterNode = clusterNodeMap.get(addNode);

@@ -82,9 +82,10 @@ public class FileController {
         logger.info("delete file:{}", MetadataService.getKey(fileMetadata));
         Result result = new Result();
         try {
-            MetadataService.softDelete(clusterProperties, fileMetadata);
-            FileService.delete(clusterProperties, fileMetadata);
-            result.setCode(ResultCode.C200.code);
+            if (MetadataService.softDelete(clusterProperties, fileMetadata)) {
+                FileService.delete(clusterProperties, fileMetadata);
+                result.setCode(ResultCode.C200.code);
+            }
         } catch (Exception e) {
             logger.error("delete api:{}", e);
             result.setCode(ResultCode.C500.getCode());
@@ -160,7 +161,7 @@ public class FileController {
     @ApiOperation(value = "admin/${yfs.group}/resync/{node}/{partition}/{name:.+}")
     @RequestMapping(value = "admin/${yfs.group}/resync/{node}/{partition}/{name:.+}", method = {RequestMethod.PATCH})
     @ResponseBody
-    public Result resyncFile(@PathVariable String node, @PathVariable String partition, @PathVariable String name) {
+    public String resyncFile(@PathVariable String node, @PathVariable String partition, @PathVariable String name) {
         Result result = new Result<>();
         try {
             String key = MetadataService.getKey(clusterProperties.getGroup(), partition, name);
@@ -177,6 +178,6 @@ public class FileController {
             result.setCode(ResultCode.C500.getCode());
             result.setValue(ResultCode.C500.getDesc());
         }
-        return result;
+        return JsonUtil.toJson(result, true);
     }
 }

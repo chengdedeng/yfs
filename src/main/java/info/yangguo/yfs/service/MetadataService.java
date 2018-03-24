@@ -26,14 +26,16 @@ public class MetadataService {
         YfsConfig.consistentMap.put(getKey(fileMetadata), fileMetadata);
     }
 
-    public static void softDelete(ClusterProperties clusterProperties, FileMetadata fileMetadata) {
+    public static boolean softDelete(ClusterProperties clusterProperties, FileMetadata fileMetadata) {
+        boolean result = false;
         Versioned<FileMetadata> tmp = YfsConfig.consistentMap.get(getKey(fileMetadata));
         if (tmp != null) {
             long version = tmp.version();
             fileMetadata = tmp.value();
             fileMetadata.getRemoveNodes().add(clusterProperties.getLocal());
-            YfsConfig.consistentMap.replace(getKey(fileMetadata), version, fileMetadata);
+            result = YfsConfig.consistentMap.replace(getKey(fileMetadata), version, fileMetadata);
         }
+        return result;
     }
 
 
