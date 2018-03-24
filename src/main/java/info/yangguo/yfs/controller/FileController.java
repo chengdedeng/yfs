@@ -23,6 +23,7 @@ import info.yangguo.yfs.po.FileMetadata;
 import info.yangguo.yfs.service.FileService;
 import info.yangguo.yfs.service.MetadataService;
 import info.yangguo.yfs.utils.JsonUtil;
+import io.atomix.utils.time.Versioned;
 import io.swagger.annotations.ApiOperation;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -127,7 +128,7 @@ public class FileController {
     @ApiOperation(value = "admin/${yfs.group}/resync/{node}")
     @RequestMapping(value = "admin/${yfs.group}/resync/{node}", method = {RequestMethod.PATCH})
     @ResponseBody
-    public Result resync(@PathVariable String node) {
+    public Result resyncNode(@PathVariable String node) {
         Result result = new Result<>();
         HashSet<String> anomalyFile = new HashSet<>();
         try {
@@ -148,6 +149,29 @@ public class FileController {
             } else {
                 result.setCode(ResultCode.C202.getCode());
                 result.setValue(anomalyFile);
+            }
+        } catch (Exception e) {
+            result.setCode(ResultCode.C500.getCode());
+            result.setValue(ResultCode.C500.getDesc());
+        }
+        return result;
+    }
+
+    @ApiOperation(value = "admin/${yfs.group}/resync/{node}/{partition}/{name:.+}")
+    @RequestMapping(value = "admin/${yfs.group}/resync/{node}/{partition}/{name:.+}", method = {RequestMethod.PATCH})
+    @ResponseBody
+    public Result resyncFile(@PathVariable String node, @PathVariable String partition, @PathVariable String name) {
+        Result result = new Result<>();
+        try {
+            String key = MetadataService.getKey(clusterProperties.getGroup(), partition, name);
+            Versioned<FileMetadata> versioned = YfsConfig.consistentMap.get(key);
+            long version = versioned.version();
+            FileMetadata fileMetadata = versioned.value();
+            fileMetadata.getAddNodes().remove(node);
+            if (false == YfsConfig.consistentMap.replace(key, version, fileMetadata)) {
+                result.setCode(ResultCode.C202.getCode());
+            } else {
+                result.setCode(ResultCode.C200.getCode());
             }
         } catch (Exception e) {
             result.setCode(ResultCode.C500.getCode());
