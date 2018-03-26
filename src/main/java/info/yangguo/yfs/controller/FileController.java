@@ -122,7 +122,7 @@ public class FileController {
     @ApiOperation(value = "${yfs.group}/metadata")
     @RequestMapping(value = "${yfs.group}/metadata", method = {RequestMethod.GET})
     @ResponseBody
-    public Result metadata() {
+    public Result getAllMetadata() {
         Result result = new Result<>();
         try {
             Map<String, FileMetadata> metadata = YfsConfig.consistentMap.asJavaMap();
@@ -133,6 +133,23 @@ public class FileController {
             result.setValue(ResultCode.C500.getDesc());
         }
         return result;
+    }
+
+    @ApiOperation(value = "${yfs.group}/metadata/{partition}/{name:.+}")
+    @RequestMapping(value = "${yfs.group}/metadata/{partition}/{name:.+}", method = {RequestMethod.GET})
+    @ResponseBody
+    public String getOneMetadata(@PathVariable String partition, @PathVariable String name) {
+        Result result = new Result<>();
+        try {
+            String key = MetadataService.getKey(clusterProperties.getGroup(), partition, name);
+            FileMetadata metadata = YfsConfig.consistentMap.get(key).value();
+            result.setValue(metadata);
+            result.setCode(ResultCode.C200.getCode());
+        } catch (Exception e) {
+            result.setCode(ResultCode.C500.getCode());
+            result.setValue(ResultCode.C500.getDesc());
+        }
+        return JsonUtil.toJson(result, true);
     }
 
     @ApiOperation(value = "admin/${yfs.group}/resync/{node}")
