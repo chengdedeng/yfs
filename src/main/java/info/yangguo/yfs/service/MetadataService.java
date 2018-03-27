@@ -50,7 +50,7 @@ public class MetadataService {
     }
 
 
-    public static String getKey(String group, String partition, String name) {
+    public static String getKey(String group, Integer partition, String name) {
         StringBuilder stringBuilder = new StringBuilder();
         stringBuilder
                 .append(group)
@@ -62,6 +62,6 @@ public class MetadataService {
     }
 
     public static String getKey(FileMetadata fileMetadata) {
-        return getKey(fileMetadata.getGroup(), String.valueOf(fileMetadata.getPartition()), fileMetadata.getName());
+        return getKey(fileMetadata.getGroup(), fileMetadata.getPartition(), fileMetadata.getName());
     }
 }

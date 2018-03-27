@@ -25,7 +25,7 @@ import info.yangguo.yfs.service.MetadataService;
 import info.yangguo.yfs.utils.JsonUtil;
 import io.atomix.cluster.Node;
 import io.atomix.core.Atomix;
-import io.atomix.core.map.ConsistentMap;
+import io.atomix.core.map.ConsistentTreeMap;
 import io.atomix.core.map.MapEvent;
 import io.atomix.messaging.Endpoint;
 import io.atomix.primitive.Persistence;
@@ -68,7 +68,7 @@ public class YfsConfig {
     private static Logger logger = LoggerFactory.getLogger(YfsConfig.class);
     private static final String mapName = "file-metadata";
     private static Serializer serializer = null;
-    public static ConsistentMap<String, FileMetadata> consistentMap = null;
+    public static ConsistentTreeMap<FileMetadata> consistentMap = null;
     private static HttpClient httpClient;
     private static Map<String, ClusterProperties.ClusterNode> clusterNodeMap = new HashMap<>();
     public static Cache<String, CountDownLatch> cache;
@@ -138,7 +138,7 @@ public class YfsConfig {
         }
         Atomix atomix = builder.withDataDirectory(metadataDir).build();
         atomix.start().join();
-        consistentMap = atomix.<String, FileMetadata>consistentMapBuilder(mapName)
+        consistentMap = atomix.<FileMetadata>consistentTreeMapBuilder(mapName)
                 .withPersistence(Persistence.PERSISTENT)
                 .withSerializer(serializer)
                 .withRetryDelay(Duration.ofSeconds(1))
