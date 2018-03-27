@@ -37,7 +37,7 @@ public class FileController extends BaseController {
     @Autowired
     private ClusterProperties clusterProperties;
 
-    @ApiOperation(value = "api/file")
+    @ApiOperation(value = "upload file")
     @ResponseBody
     @RequestMapping(value = "api/file", method = {RequestMethod.POST})
     public Result upload(@RequestParam(value = "qos", required = false) Integer qos, MultipartFile file) {
@@ -70,7 +70,7 @@ public class FileController extends BaseController {
         return result;
     }
 
-    @ApiOperation(value = "${yfs.group}/{partition}/{name:.+}")
+    @ApiOperation(value = "delete file")
     @RequestMapping(value = "${yfs.group}/{partition}/{name:.+}", method = {RequestMethod.DELETE})
     public void delete(@PathVariable String partition, @PathVariable String name, HttpServletResponse response) {
         FileMetadata fileMetadata = new FileMetadata();
@@ -92,7 +92,7 @@ public class FileController extends BaseController {
         outputResult(response, result);
     }
 
-    @ApiOperation(value = "${yfs.group}/{partition}/{name:.+}")
+    @ApiOperation(value = "data synchronization between nodes")
     @RequestMapping(value = "${yfs.group}/{partition}/{name:.+}", method = {RequestMethod.GET})
     public void download(@PathVariable String partition, @PathVariable String name, HttpServletResponse response) {
         FileMetadata fileMetadata = new FileMetadata();

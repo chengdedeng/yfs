@@ -24,7 +24,7 @@ public class AdminController extends BaseController {
     @Autowired
     private ClusterProperties clusterProperties;
 
-    @ApiOperation(value = "resync/${yfs.group}/{node}")
+    @ApiOperation(value = "node sync full file")
     @RequestMapping(value = "resync/${yfs.group}/{node}", method = {RequestMethod.PATCH})
     @ResponseBody
     public Result resyncNode(@PathVariable String node) {
@@ -56,7 +56,7 @@ public class AdminController extends BaseController {
         return result;
     }
 
-    @ApiOperation(value = "resync/${yfs.group}/{node}/{partition}/{name:.+}")
+    @ApiOperation(value = "node sync one file")
     @RequestMapping(value = "resync/${yfs.group}/{node}/{partition}/{name:.+}", method = {RequestMethod.PUT})
     public void resyncFile(@PathVariable String node, @PathVariable Integer partition, @PathVariable String name, HttpServletResponse response) {
         Result result = new Result<>();

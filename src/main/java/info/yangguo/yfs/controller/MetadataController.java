@@ -28,7 +28,7 @@ public class MetadataController extends BaseController {
     @Autowired
     private ClusterProperties clusterProperties;
 
-    @ApiOperation(value = "${yfs.group}")
+    @ApiOperation(value = "get all metadata by paging query")
     @RequestMapping(value = "${yfs.group}", method = {RequestMethod.GET})
     public void getAllMetadata(@RequestParam("pageSize") Integer pageSize, @RequestParam(value = "index", required = false) String index, HttpServletResponse response) {
         Result result = new Result<>();
@@ -63,7 +63,7 @@ public class MetadataController extends BaseController {
         outputResult(response, result);
     }
 
-    @ApiOperation(value = "${yfs.group}/{partition}/{name:.+}")
+    @ApiOperation(value = "get metadata for one file")
     @RequestMapping(value = "${yfs.group}/{partition}/{name:.+}", method = {RequestMethod.GET})
     public void getOneMetadata(@PathVariable Integer partition, @PathVariable String name, HttpServletResponse response) {
         Result result = new Result<>();
