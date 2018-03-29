@@ -121,7 +121,7 @@ public class FileService {
         return fileDir;
     }
 
-    private static StringBuilder getPath(ClusterProperties clusterProperties, FileMetadata fileMetadata) {
+    public static StringBuilder getPath(ClusterProperties clusterProperties, FileMetadata fileMetadata) {
         return getDir(clusterProperties, fileMetadata)
                 .append("/")
                 .append(fileMetadata.getName());

@@ -143,6 +143,11 @@
             <artifactId>concurrentunit</artifactId>
             <version>0.4.2</version>
         </dependency>
+        <dependency>
+            <groupId>org.apache.tika</groupId>
+            <artifactId>tika-core</artifactId>
+            <version>1.17</version>
+        </dependency>
     </dependencies>
     <dependencyManagement>
         <dependencies>
