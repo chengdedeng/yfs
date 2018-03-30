@@ -16,12 +16,24 @@
 
     <profiles>
         <profile>
-            <id>java8-doclint-disabled</id>
-            <activation>
-                <jdk>[1.8,)</jdk>
-            </activation>
+            <id>server1</id>
             <properties>
-                <javadoc.opts>-Xdoclint:none</javadoc.opts>
+                <env>server1</env>
+            </properties>
+            <activation>
+                <activeByDefault>true</activeByDefault>
+            </activation>
+        </profile>
+        <profile>
+            <id>server2</id>
+            <properties>
+                <env>server2</env>
+            </properties>
+        </profile>
+        <profile>
+            <id>server3</id>
+            <properties>
+                <env>server3</env>
             </properties>
         </profile>
     </profiles>
@@ -163,6 +175,21 @@
     </dependencyManagement>
 
     <build>
+        <resources>
+            <resource>
+                <directory>src/main/resources</directory>
+                <excludes>
+                    <exclude>server1/**</exclude>
+                    <exclude>server2/**</exclude>
+                    <exclude>server3/**</exclude>
+                </excludes>
+            </resource>
+            <resource>
+                <directory>src/main/resources/${env}</directory>
+                <targetPath>${project.build.outputDirectory}</targetPath>
+                <filtering>true</filtering>
+            </resource>
+        </resources>
         <plugins>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
@@ -194,7 +221,7 @@
                     <repositoryName>lib</repositoryName>
                     <configurationDirectory>conf</configurationDirectory>
                     <copyConfigurationDirectory>true</copyConfigurationDirectory>
-                    <configurationSourceDirectory>src/main/resources</configurationSourceDirectory>
+                    <configurationSourceDirectory>src/main/resources/${env}</configurationSourceDirectory>
                     <includeConfigurationDirectoryInClasspath>true</includeConfigurationDirectoryInClasspath>
                     <target>${project.build.directory}</target>
                     <daemons>
