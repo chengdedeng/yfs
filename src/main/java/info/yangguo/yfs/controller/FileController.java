@@ -44,6 +44,8 @@ public class FileController extends BaseController {
     @Autowired
     private ClusterProperties clusterProperties;
 
+    //不存在孤儿数据，即上传Abort时。
+    //https://stackoverflow.com/questions/21089106/converting-multipartfile-to-java-io-file-without-copying-to-local-machine
     @ApiOperation(value = "upload file")
     @ResponseBody
     @RequestMapping(value = "api/file", method = {RequestMethod.POST})
