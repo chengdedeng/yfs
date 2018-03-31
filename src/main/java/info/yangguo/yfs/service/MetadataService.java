@@ -29,7 +29,7 @@ public class MetadataService {
         fileMetadata.getAddNodes().add(clusterProperties.getLocal());
         CountDownLatch countDownLatch = new CountDownLatch(qos);
         YfsConfig.cache.put(getKey(fileMetadata), countDownLatch);
-        YfsConfig.consistentMap.put(getKey(fileMetadata), fileMetadata);
+        YfsConfig.fileMetadataConsistentMap.put(getKey(fileMetadata), fileMetadata);
         //Preventing network traffic from failing
         countDownLatch.countDown();
         result = countDownLatch.await(clusterProperties.getQos_max_time(), TimeUnit.SECONDS);
@@ -39,12 +39,12 @@ public class MetadataService {
 
     public static boolean softDelete(ClusterProperties clusterProperties, FileMetadata fileMetadata) {
         boolean result = false;
-        Versioned<FileMetadata> tmp = YfsConfig.consistentMap.get(getKey(fileMetadata));
+        Versioned<FileMetadata> tmp = YfsConfig.fileMetadataConsistentMap.get(getKey(fileMetadata));
         if (tmp != null) {
             long version = tmp.version();
             fileMetadata = tmp.value();
             fileMetadata.getRemoveNodes().add(clusterProperties.getLocal());
-            result = YfsConfig.consistentMap.replace(getKey(fileMetadata), version, fileMetadata);
+            result = YfsConfig.fileMetadataConsistentMap.replace(getKey(fileMetadata), version, fileMetadata);
         }
         return result;
     }

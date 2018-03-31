@@ -19,24 +19,24 @@ import javax.servlet.http.HttpServletResponse;
 import java.util.HashSet;
 
 @Controller
-@RequestMapping(value = "admin")
+@RequestMapping(value = "${yfs.group}/admin")
 public class AdminController extends BaseController {
     @Autowired
     private ClusterProperties clusterProperties;
 
     @ApiOperation(value = "node sync full file")
-    @RequestMapping(value = "resync/${yfs.group}/{node}", method = {RequestMethod.PATCH})
+    @RequestMapping(value = "resync/{node}", method = {RequestMethod.PATCH})
     @ResponseBody
     public Result resyncNode(@PathVariable String node) {
         Result result = new Result<>();
         HashSet<String> anomalyFile = new HashSet<>();
         try {
-            YfsConfig.consistentMap.values().stream().forEach(fileMetadataVersioned -> {
+            YfsConfig.fileMetadataConsistentMap.values().stream().forEach(fileMetadataVersioned -> {
                 long version = fileMetadataVersioned.version();
                 FileMetadata fileMetadata = fileMetadataVersioned.value();
                 fileMetadata.getAddNodes().remove(node);
                 try {
-                    if (false == YfsConfig.consistentMap.replace(MetadataService.getKey(fileMetadata), version, fileMetadata)) {
+                    if (false == YfsConfig.fileMetadataConsistentMap.replace(MetadataService.getKey(fileMetadata), version, fileMetadata)) {
                         anomalyFile.add(MetadataService.getKey(fileMetadata));
                     }
                 } catch (Exception e) {
@@ -57,16 +57,16 @@ public class AdminController extends BaseController {
     }
 
     @ApiOperation(value = "node sync one file")
-    @RequestMapping(value = "resync/${yfs.group}/{node}/{partition}/{name:.+}", method = {RequestMethod.PUT})
+    @RequestMapping(value = "resync/{node}/{partition}/{name:.+}", method = {RequestMethod.PUT})
     public void resyncFile(@PathVariable String node, @PathVariable Integer partition, @PathVariable String name, HttpServletResponse response) {
         Result result = new Result<>();
         try {
             String key = MetadataService.getKey(clusterProperties.getGroup(), partition, name);
-            Versioned<FileMetadata> versioned = YfsConfig.consistentMap.get(key);
+            Versioned<FileMetadata> versioned = YfsConfig.fileMetadataConsistentMap.get(key);
             long version = versioned.version();
             FileMetadata fileMetadata = versioned.value();
             fileMetadata.getAddNodes().remove(node);
-            if (false == YfsConfig.consistentMap.replace(key, version, fileMetadata)) {
+            if (false == YfsConfig.fileMetadataConsistentMap.replace(key, version, fileMetadata)) {
                 result.setCode(ResultCode.C202.getCode());
             } else {
                 result.setCode(ResultCode.C200.getCode());

@@ -20,11 +20,13 @@ import com.google.common.cache.CacheBuilder;
 import com.google.common.cache.RemovalListener;
 import com.google.common.cache.RemovalNotification;
 import info.yangguo.yfs.po.FileMetadata;
+import info.yangguo.yfs.po.ServerMetadata;
 import info.yangguo.yfs.service.FileService;
 import info.yangguo.yfs.service.MetadataService;
 import info.yangguo.yfs.utils.JsonUtil;
 import io.atomix.cluster.Node;
 import io.atomix.core.Atomix;
+import io.atomix.core.map.ConsistentMap;
 import io.atomix.core.map.ConsistentTreeMap;
 import io.atomix.core.map.MapEvent;
 import io.atomix.messaging.Endpoint;
@@ -66,9 +68,11 @@ import java.util.stream.Collectors;
 @EnableConfigurationProperties({ClusterProperties.class})
 public class YfsConfig {
     private static Logger logger = LoggerFactory.getLogger(YfsConfig.class);
-    private static final String mapName = "file-metadata";
+    private static final String fileMetadataMapName = "file-metadata";
+    private static final String serverMetadataMapName = "server-metadata";
     private static Serializer serializer = null;
-    public static ConsistentTreeMap<FileMetadata> consistentMap = null;
+    public static ConsistentTreeMap<FileMetadata> fileMetadataConsistentMap = null;
+    public static ConsistentMap<String, ServerMetadata> serverMetadataConsistentMap = null;
     private static HttpClient httpClient;
     private static Map<String, ClusterProperties.ClusterNode> clusterNodeMap = new HashMap<>();
     public static Cache<String, CountDownLatch> cache;
@@ -78,6 +82,7 @@ public class YfsConfig {
                 .register(KryoNamespaces.BASIC)
                 .register(Date.class)
                 .register(FileMetadata.class)
+                .register(ServerMetadata.class)
                 .build());
 
         Registry<ConnectionSocketFactory> registry = RegistryBuilder.<ConnectionSocketFactory>create()
@@ -138,14 +143,21 @@ public class YfsConfig {
         }
         Atomix atomix = builder.withDataDirectory(metadataDir).build();
         atomix.start().join();
-        consistentMap = atomix.<FileMetadata>consistentTreeMapBuilder(mapName)
+        serverMetadataConsistentMap = atomix.<String,ServerMetadata>consistentMapBuilder(serverMetadataMapName)
                 .withPersistence(Persistence.PERSISTENT)
                 .withSerializer(serializer)
                 .withRetryDelay(Duration.ofSeconds(1))
                 .withMaxRetries(3)
                 .withBackups(2)
                 .build();
-        consistentMap.addListener(event -> {
+        fileMetadataConsistentMap = atomix.<FileMetadata>consistentTreeMapBuilder(fileMetadataMapName)
+                .withPersistence(Persistence.PERSISTENT)
+                .withSerializer(serializer)
+                .withRetryDelay(Duration.ofSeconds(1))
+                .withMaxRetries(3)
+                .withBackups(2)
+                .build();
+        fileMetadataConsistentMap.addListener(event -> {
             switch (event.type()) {
                 case INSERT:
                     Versioned<FileMetadata> tmp1 = event.newValue();
@@ -227,13 +239,13 @@ public class YfsConfig {
         boolean result = false;
         FileMetadata fileMetadata = null;
         try {
-            Versioned<FileMetadata> tmp = consistentMap.get(key);
+            Versioned<FileMetadata> tmp = fileMetadataConsistentMap.get(key);
             long version = tmp.version();
             fileMetadata = tmp.value();
             if (!fileMetadata.getAddNodes().contains(clusterProperties.getLocal())) {
                 fileMetadata.getAddNodes().add(clusterProperties.getLocal());
             }
-            result = consistentMap.replace(key, version, fileMetadata);
+            result = fileMetadataConsistentMap.replace(key, version, fileMetadata);
         } catch (Exception e) {
             logger.warn("{} UpdateAddNodes Failure:{}", eventType, key, e);
         }
@@ -248,17 +260,17 @@ public class YfsConfig {
         boolean result = false;
         FileMetadata fileMetadata = null;
         try {
-            Versioned<FileMetadata> tmp = consistentMap.get(key);
+            Versioned<FileMetadata> tmp = fileMetadataConsistentMap.get(key);
             long version = tmp.version();
             fileMetadata = tmp.value();
             if (!fileMetadata.getRemoveNodes().contains(clusterProperties.getLocal())) {
                 fileMetadata.getRemoveNodes().add(clusterProperties.getLocal());
             }
             if (fileMetadata.getRemoveNodes().size() == clusterProperties.getNode().size()) {
-                consistentMap.remove(key);
+                fileMetadataConsistentMap.remove(key);
                 result = true;
             } else {
-                result = consistentMap.replace(key, version, fileMetadata);
+                result = fileMetadataConsistentMap.replace(key, version, fileMetadata);
             }
         } catch (Exception e) {
             logger.warn("UpdateRemoveNodes Failure:{}", key, e);
