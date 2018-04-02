@@ -19,6 +19,8 @@ import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
 import com.google.common.cache.RemovalListener;
 import com.google.common.cache.RemovalNotification;
+import info.yangguo.yfs.common.CommonConstant;
+import info.yangguo.yfs.common.po.StoreInfo;
 import info.yangguo.yfs.po.FileMetadata;
 import info.yangguo.yfs.po.ServerMetadata;
 import info.yangguo.yfs.service.FileService;
@@ -31,8 +33,6 @@ import io.atomix.core.map.ConsistentTreeMap;
 import io.atomix.core.map.MapEvent;
 import io.atomix.messaging.Endpoint;
 import io.atomix.primitive.Persistence;
-import io.atomix.utils.serializer.KryoNamespace;
-import io.atomix.utils.serializer.KryoNamespaces;
 import io.atomix.utils.serializer.Serializer;
 import io.atomix.utils.time.Versioned;
 import org.apache.commons.io.FileUtils;
@@ -56,7 +56,6 @@ import org.springframework.context.annotation.Configuration;
 
 import java.io.File;
 import java.time.Duration;
-import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -73,17 +72,14 @@ public class YfsConfig {
     private static Serializer serializer = null;
     public static ConsistentTreeMap<FileMetadata> fileMetadataConsistentMap = null;
     public static ConsistentMap<String, ServerMetadata> serverMetadataConsistentMap = null;
+    public static ConsistentMap<String, StoreInfo> storeInfoConsistentMap = null;
     private static HttpClient httpClient;
     private static Map<String, ClusterProperties.ClusterNode> clusterNodeMap = new HashMap<>();
     public static Cache<String, CountDownLatch> cache;
 
     static {
-        serializer = Serializer.using(KryoNamespace.builder()
-                .register(KryoNamespaces.BASIC)
-                .register(Date.class)
-                .register(FileMetadata.class)
-                .register(ServerMetadata.class)
-                .build());
+        CommonConstant.kryoBuilder.register(FileMetadata.class).register(ServerMetadata.class);
+        serializer = Serializer.using(CommonConstant.kryoBuilder.build());
 
         Registry<ConnectionSocketFactory> registry = RegistryBuilder.<ConnectionSocketFactory>create()
                 .register("http", PlainConnectionSocketFactory.getSocketFactory())
@@ -115,8 +111,8 @@ public class YfsConfig {
     @Autowired
     private ClusterProperties clusterProperties;
 
-    @Bean
-    public Atomix getAtomix() {
+    @Bean(name = "storeAtomix")
+    public Atomix getStoreAtomix() {
         Atomix.Builder builder = Atomix.builder();
         clusterProperties.getStore().getNode().stream().forEach(clusterNode -> {
             clusterNodeMap.put(clusterNode.getId(), clusterNode);
@@ -143,7 +139,7 @@ public class YfsConfig {
         }
         Atomix atomix = builder.withDataDirectory(metadataDir).build();
         atomix.start().join();
-        serverMetadataConsistentMap = atomix.<String,ServerMetadata>consistentMapBuilder(serverMetadataMapName)
+        serverMetadataConsistentMap = atomix.<String, ServerMetadata>consistentMapBuilder(serverMetadataMapName)
                 .withPersistence(Persistence.PERSISTENT)
                 .withSerializer(serializer)
                 .withRetryDelay(Duration.ofSeconds(1))
@@ -213,6 +209,36 @@ public class YfsConfig {
         });
         return atomix;
     }
+
+    @Bean(name = "gatewayAtomix")
+    public Atomix getGatewayAtomix() {
+        Atomix.Builder builder = Atomix.builder().withLocalNode(Node.builder(clusterProperties.getLocal())
+                .withType(Node.Type.CLIENT)
+                .withEndpoint(Endpoint.from(clusterProperties.getGateway().getHost(), clusterProperties.getGateway().getPort()))
+                .build());
+
+
+        builder.withBootstrapNodes(clusterProperties.getGateway().getNode().parallelStream().map(clusterNode -> {
+            return Node
+                    .builder(clusterNode.getId())
+                    .withType(Node.Type.DATA)
+                    .withEndpoint(Endpoint.from(clusterNode.getHost(), clusterNode.getSocket_port())).build();
+        }).collect(Collectors.toList()));
+
+        Atomix atomix = builder.build();
+        atomix.start().join();
+        storeInfoConsistentMap = atomix.<String, StoreInfo>consistentMapBuilder(CommonConstant.storeInfoMapName)
+                .withPersistence(Persistence.PERSISTENT)
+                .withSerializer(serializer)
+                .withRetryDelay(Duration.ofSeconds(1))
+                .withMaxRetries(3)
+                .withBackups(2)
+                .build();
+        storeInfoConsistentMap.addListener(event -> {
+        });
+        return atomix;
+    }
+
 
     private static long syncFile(ClusterProperties clusterProperties, List<String> addNodes, FileMetadata fileMetadata) {
         long checkSum = 0L;

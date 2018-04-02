@@ -15,8 +15,8 @@
  */
 package info.yangguo.yfs.config;
 
+import info.yangguo.yfs.common.po.StoreInfo;
 import info.yangguo.yfs.po.FileMetadata;
-import info.yangguo.yfs.po.ServerMetadata;
 import info.yangguo.yfs.service.MetadataService;
 import info.yangguo.yfs.utils.JsonUtil;
 import io.atomix.utils.time.Versioned;
@@ -82,12 +82,15 @@ public class Watchdog {
             }
         }
 
-        ServerMetadata serverMetadata = new ServerMetadata();
+        StoreInfo storeInfo = new StoreInfo();
         try {
-            serverMetadata.setMetadataFreeSpaceKb(FileSystemUtils.freeSpaceKb(metadataDir));
-            serverMetadata.setFileFreeSpaceKb(FileSystemUtils.freeSpaceKb(fileDataDir));
-            serverMetadata.setTime(new Date().getTime());
-            YfsConfig.serverMetadataConsistentMap.put(clusterProperties.getLocal(), serverMetadata);
+            storeInfo.setGroup(clusterProperties.getGroup());
+            storeInfo.setHost(clusterProperties.getGateway().getHost());
+            storeInfo.setNodeId(clusterProperties.getLocal());
+            storeInfo.setMetadataFreeSpaceKb(FileSystemUtils.freeSpaceKb(metadataDir));
+            storeInfo.setFileFreeSpaceKb(FileSystemUtils.freeSpaceKb(fileDataDir));
+            storeInfo.setUpdateTime(new Date().getTime());
+            YfsConfig.storeInfoConsistentMap.put(clusterProperties.getGroup() + "-" + clusterProperties.getLocal(), storeInfo);
         } catch (IOException e) {
             logger.error("server check fail", e);
         }

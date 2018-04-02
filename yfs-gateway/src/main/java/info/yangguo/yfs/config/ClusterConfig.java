@@ -15,6 +15,7 @@
  */
 package info.yangguo.yfs.config;
 
+import info.yangguo.yfs.common.CommonConstant;
 import info.yangguo.yfs.common.po.StoreInfo;
 import info.yangguo.yfs.po.ClusterProperties;
 import info.yangguo.yfs.util.PropertiesUtil;
@@ -23,8 +24,6 @@ import io.atomix.core.Atomix;
 import io.atomix.core.map.ConsistentMap;
 import io.atomix.messaging.Endpoint;
 import io.atomix.primitive.Persistence;
-import io.atomix.utils.serializer.KryoNamespace;
-import io.atomix.utils.serializer.KryoNamespaces;
 import io.atomix.utils.serializer.Serializer;
 import org.apache.commons.io.FileUtils;
 
@@ -115,18 +114,16 @@ public class ClusterConfig {
         }
         Atomix atomix = builder.withDataDirectory(metadataDir).build();
         atomix.start().join();
-        Serializer serializer = Serializer.using(KryoNamespace.builder()
-                .register(KryoNamespaces.BASIC)
-                .register(Date.class)
-                .register(StoreInfo.class)
-                .build());
 
-        storeInfoMap = atomix.<String, StoreInfo>consistentMapBuilder("store-info")
+        storeInfoMap = atomix.<String, StoreInfo>consistentMapBuilder(CommonConstant.storeInfoMapName)
                 .withPersistence(Persistence.PERSISTENT)
-                .withSerializer(serializer)
+                .withSerializer(Serializer.using(CommonConstant.kryoBuilder.build()))
                 .withRetryDelay(Duration.ofSeconds(1))
                 .withMaxRetries(3)
                 .withBackups(2)
                 .build();
+        storeInfoMap.addListener(event -> {
+            System.out.println(event.newValue().toString());
+        });
     }
 }

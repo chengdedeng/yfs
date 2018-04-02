@@ -25,6 +25,7 @@ public class Application {
         threadPoolConfiguration.withProxyToServerWorkerThreads(Constant.ProxyToServerWorkerThreads);
 
         InetSocketAddress inetSocketAddress = new InetSocketAddress(Constant.ServerPort);
+        ClusterConfig.init();
         HttpProxyServerBootstrap httpProxyServerBootstrap = DefaultHttpProxyServer.bootstrap()
                 .withAddress(inetSocketAddress);
         httpProxyServerBootstrap.withServerResolver(HostResolverImpl.getSingleton());
@@ -69,6 +70,5 @@ public class Application {
                     }
                 })
                 .start();
-        ClusterConfig.init();
     }
 }
