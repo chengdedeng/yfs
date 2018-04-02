@@ -1,6 +1,7 @@
 package info.yangguo.yfs;
 
 
+import info.yangguo.yfs.config.ClusterConfig;
 import info.yangguo.yfs.util.NetUtils;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.handler.codec.http.HttpRequest;
@@ -68,5 +69,6 @@ public class Application {
                     }
                 })
                 .start();
+        ClusterConfig.init();
     }
 }

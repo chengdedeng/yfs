@@ -16,11 +16,6 @@ import java.util.Map;
  * Description:
  */
 public class Constant {
-    enum X_Frame_Options {
-        DENY,//表示该页面不允许在 frame 中展示,即便是在相同域名的页面中嵌套也不允许.
-        SAMEORIGIN//表示该页面可以在相同域名页面的 frame 中展示.
-    }
-
     public static Map<String, String> gatewayConfs = PropertiesUtil.getProperty("gateway.properties");
     public static int AcceptorThreads = Integer.parseInt(gatewayConfs.get("gateway.acceptorThreads"));
     public static int ClientToProxyWorkerThreads = Integer.parseInt(gatewayConfs.get("gateway.clientToProxyWorkerThreads"));

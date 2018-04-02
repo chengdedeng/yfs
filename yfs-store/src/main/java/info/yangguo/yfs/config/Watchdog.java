@@ -39,7 +39,7 @@ public class Watchdog {
     @Autowired
     private ClusterProperties clusterProperties;
 
-    @Scheduled(initialDelayString = "${yfs.watchdog.initial_delay}", fixedDelayString = "${yfs.watchdog.fixed_delay}")
+    @Scheduled(initialDelayString = "${yfs.store.watchdog.initial_delay}", fixedDelayString = "${yfs.store.watchdog.fixed_delay}")
     public void watchFile() {
         logger.info("watchdog**************************file");
         Collection<Versioned<FileMetadata>> metadata = YfsConfig.fileMetadataConsistentMap.values();

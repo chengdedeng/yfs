@@ -19,7 +19,7 @@ import javax.servlet.http.HttpServletResponse;
 import java.util.HashSet;
 
 @Controller
-@RequestMapping(value = "${yfs.group}/admin")
+@RequestMapping(value = "${yfs.store.group}/admin")
 public class AdminController extends BaseController {
     @Autowired
     private ClusterProperties clusterProperties;

@@ -13,47 +13,26 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package info.yangguo.yfs.config;
+package info.yangguo.yfs.po;
 
 import lombok.Getter;
 import lombok.Setter;
-import org.springframework.boot.context.properties.ConfigurationProperties;
-import org.springframework.stereotype.Component;
 
+import java.util.ArrayList;
 import java.util.List;
 
-@Component
-@ConfigurationProperties(prefix = "yfs.store")
 @Getter
 @Setter
 public class ClusterProperties {
-    private int qos_max_time;
-    private long max_upload_size;
-    private String group;
-    private String local;
-    private Metadata metadata;
-    private Filedata filedata;
-    private List<ClusterNode> node;
+    public String local;
+    public String metadataDir;
+    public List<ClusterNode> node=new ArrayList<>();
 
     @Getter
     @Setter
     public static class ClusterNode {
-        private String id;
-        private String host;
-        private int socket_port;
-        private int http_port;
-    }
-
-    @Getter
-    @Setter
-    public static class Metadata {
-        private String dir;
-    }
-
-    @Getter
-    @Setter
-    public static class Filedata {
-        private String dir;
-        private int partition;
+        public String id;
+        public String host;
+        public int socket_port;
     }
 }
