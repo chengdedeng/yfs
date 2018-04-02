@@ -37,7 +37,7 @@ public class FileService {
 
     public static FileMetadata store(ClusterProperties clusterProperties, CommonsMultipartFile commonsMultipartFile) throws IOException {
         FileMetadata fileMetadata = new FileMetadata();
-        int block = (Hashing.consistentHash(Hashing.murmur3_32().hashBytes(commonsMultipartFile.getOriginalFilename().getBytes()), clusterProperties.getFiledata().getPartition()) + 1);
+        int block = (Hashing.consistentHash(Hashing.murmur3_32().hashBytes(commonsMultipartFile.getOriginalFilename().getBytes()), clusterProperties.getStore().getFiledata().getPartition()) + 1);
         fileMetadata.setCreateTime(new Date());
         fileMetadata.setGroup(clusterProperties.getGroup());
         fileMetadata.setName(commonsMultipartFile.getOriginalFilename());
@@ -108,10 +108,10 @@ public class FileService {
 
     private static StringBuilder getDir(ClusterProperties clusterProperties, FileMetadata fileMetadata) {
         StringBuilder fileDir = new StringBuilder();
-        if (!clusterProperties.getFiledata().getDir().startsWith("/")) {
+        if (!clusterProperties.getStore().getFiledata().getDir().startsWith("/")) {
             fileDir.append(FileUtils.getUserDirectoryPath()).append("/");
         }
-        fileDir.append(clusterProperties.getFiledata().getDir())
+        fileDir.append(clusterProperties.getStore().getFiledata().getDir())
                 .append("/")
                 .append(clusterProperties.getLocal())
                 .append("/")

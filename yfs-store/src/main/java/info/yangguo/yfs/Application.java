@@ -37,7 +37,7 @@ public class Application implements EmbeddedServletContainerCustomizer {
 
     @Override
     public void customize(ConfigurableEmbeddedServletContainer configurableEmbeddedServletContainer) {
-        clusterProperties.getNode().stream().forEach(clusterNode -> {
+        clusterProperties.getStore().getNode().stream().forEach(clusterNode -> {
             if (clusterNode.getId().equals(clusterProperties.getLocal())) {
                 configurableEmbeddedServletContainer.setPort(clusterNode.getHttp_port());
             }

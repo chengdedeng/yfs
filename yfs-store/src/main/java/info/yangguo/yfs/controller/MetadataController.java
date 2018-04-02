@@ -21,7 +21,7 @@ import java.util.List;
 import java.util.Map;
 
 @Controller
-@RequestMapping(value = "${yfs.store.group}/metadata")
+@RequestMapping(value = "${yfs.group}/metadata")
 public class MetadataController extends BaseController {
     @Autowired
     private ClusterProperties clusterProperties;

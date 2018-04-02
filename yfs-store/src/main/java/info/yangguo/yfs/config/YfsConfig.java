@@ -118,7 +118,7 @@ public class YfsConfig {
     @Bean
     public Atomix getAtomix() {
         Atomix.Builder builder = Atomix.builder();
-        clusterProperties.getNode().stream().forEach(clusterNode -> {
+        clusterProperties.getStore().getNode().stream().forEach(clusterNode -> {
             clusterNodeMap.put(clusterNode.getId(), clusterNode);
             if (clusterNode.getId().equals(clusterProperties.getLocal())) {
                 builder
@@ -129,17 +129,17 @@ public class YfsConfig {
             }
         });
 
-        builder.withBootstrapNodes(clusterProperties.getNode().parallelStream().map(clusterNode -> {
+        builder.withBootstrapNodes(clusterProperties.getStore().getNode().parallelStream().map(clusterNode -> {
             return Node
                     .builder(clusterNode.getId())
                     .withType(Node.Type.DATA)
                     .withEndpoint(Endpoint.from(clusterNode.getHost(), clusterNode.getSocket_port())).build();
         }).collect(Collectors.toList()));
         File metadataDir = null;
-        if (clusterProperties.getMetadata().getDir().startsWith("/")) {
-            metadataDir = new File(clusterProperties.getMetadata().getDir() + "/" + clusterProperties.getLocal());
+        if (clusterProperties.getStore().getMetadata().getDir().startsWith("/")) {
+            metadataDir = new File(clusterProperties.getStore().getMetadata().getDir() + "/" + clusterProperties.getLocal());
         } else {
-            metadataDir = new File(FileUtils.getUserDirectoryPath(), clusterProperties.getMetadata().getDir() + "/" + clusterProperties.getLocal());
+            metadataDir = new File(FileUtils.getUserDirectoryPath(), clusterProperties.getStore().getMetadata().getDir() + "/" + clusterProperties.getLocal());
         }
         Atomix atomix = builder.withDataDirectory(metadataDir).build();
         atomix.start().join();
@@ -266,7 +266,7 @@ public class YfsConfig {
             if (!fileMetadata.getRemoveNodes().contains(clusterProperties.getLocal())) {
                 fileMetadata.getRemoveNodes().add(clusterProperties.getLocal());
             }
-            if (fileMetadata.getRemoveNodes().size() == clusterProperties.getNode().size()) {
+            if (fileMetadata.getRemoveNodes().size() == clusterProperties.getStore().getNode().size()) {
                 fileMetadataConsistentMap.remove(key);
                 result = true;
             } else {

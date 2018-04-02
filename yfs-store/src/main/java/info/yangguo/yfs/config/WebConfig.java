@@ -65,7 +65,7 @@ public class WebConfig {
     @Bean
     public MultipartResolver multipartResolver() {
         CommonsMultipartResolver multipartResolver = new CommonsMultipartResolver();
-        multipartResolver.setMaxUploadSize(clusterProperties.getMax_upload_size());
+        multipartResolver.setMaxUploadSize(clusterProperties.getStore().getMax_upload_size());
         return multipartResolver;
     }
 

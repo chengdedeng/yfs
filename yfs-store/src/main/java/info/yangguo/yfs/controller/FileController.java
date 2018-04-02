@@ -55,8 +55,8 @@ public class FileController extends BaseController {
         FileMetadata fileMetadata = null;
         if (qos == null || qos < 1) {
             qos = 1;
-        } else if (qos > clusterProperties.getNode().size()) {
-            qos = clusterProperties.getNode().size();
+        } else if (qos > clusterProperties.getStore().getNode().size()) {
+            qos = clusterProperties.getStore().getNode().size();
         }
         try {
             CommonsMultipartFile commonsMultipartFile = (CommonsMultipartFile) file;
@@ -80,7 +80,7 @@ public class FileController extends BaseController {
     }
 
     @ApiOperation(value = "delete file")
-    @RequestMapping(value = "${yfs.store.group}/{partition}/{name:.+}", method = {RequestMethod.DELETE})
+    @RequestMapping(value = "${yfs.group}/{partition}/{name:.+}", method = {RequestMethod.DELETE})
     public void delete(@PathVariable String partition, @PathVariable String name, HttpServletResponse response) {
         FileMetadata fileMetadata = new FileMetadata();
         fileMetadata.setGroup(clusterProperties.getGroup());
@@ -102,7 +102,7 @@ public class FileController extends BaseController {
     }
 
     @ApiOperation(value = "data synchronization between nodes")
-    @RequestMapping(value = "${yfs.store.group}/{partition}/{name:.+}", method = {RequestMethod.GET})
+    @RequestMapping(value = "${yfs.group}/{partition}/{name:.+}", method = {RequestMethod.GET})
     public void download(@PathVariable String partition, @PathVariable String name, HttpServletResponse response) {
         FileMetadata fileMetadata = new FileMetadata();
         fileMetadata.setGroup(clusterProperties.getGroup());

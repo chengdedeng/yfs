@@ -32,7 +32,7 @@ public class MetadataService {
         YfsConfig.fileMetadataConsistentMap.put(getKey(fileMetadata), fileMetadata);
         //Preventing network traffic from failing
         countDownLatch.countDown();
-        result = countDownLatch.await(clusterProperties.getQos_max_time(), TimeUnit.SECONDS);
+        result = countDownLatch.await(clusterProperties.getStore().getQos_max_time(), TimeUnit.SECONDS);
         YfsConfig.cache.invalidate(getKey(fileMetadata));
         return result;
     }

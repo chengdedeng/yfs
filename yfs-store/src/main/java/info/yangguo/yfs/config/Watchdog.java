@@ -60,10 +60,10 @@ public class Watchdog {
     public void watchServer() {
         logger.info("watchdog**************************server");
         StringBuilder fileDir = new StringBuilder();
-        if (!clusterProperties.getFiledata().getDir().startsWith("/")) {
+        if (!clusterProperties.getStore().getFiledata().getDir().startsWith("/")) {
             fileDir.append(FileUtils.getUserDirectoryPath()).append("/");
         }
-        String metadataDir = fileDir.toString() + clusterProperties.getMetadata().getDir();
+        String metadataDir = fileDir.toString() + clusterProperties.getStore().getMetadata().getDir();
         File metadataDirFile = new File(metadataDir);
         if (!metadataDirFile.exists()) {
             try {
@@ -72,7 +72,7 @@ public class Watchdog {
                 logger.error("mkdir error", e);
             }
         }
-        String fileDataDir = fileDir.toString() + clusterProperties.getFiledata().getDir();
+        String fileDataDir = fileDir.toString() + clusterProperties.getStore().getFiledata().getDir();
         File fileDataDirFile = new File(fileDataDir);
         if (!fileDataDirFile.exists()) {
             try {

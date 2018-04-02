@@ -23,17 +23,32 @@ import org.springframework.stereotype.Component;
 import java.util.List;
 
 @Component
-@ConfigurationProperties(prefix = "yfs.store")
+@ConfigurationProperties(prefix = "yfs")
 @Getter
 @Setter
 public class ClusterProperties {
-    private int qos_max_time;
-    private long max_upload_size;
     private String group;
     private String local;
-    private Metadata metadata;
-    private Filedata filedata;
-    private List<ClusterNode> node;
+    private Store store;
+    private Gateway gateway;
+
+    @Getter
+    @Setter
+    public static class Store {
+        private int qos_max_time;
+        private long max_upload_size;
+        private Metadata metadata;
+        private Filedata filedata;
+        private List<ClusterNode> node;
+    }
+
+    @Getter
+    @Setter
+    public static class Gateway {
+        private String host;
+        private int port;
+        private List<ClusterNode> node;
+    }
 
     @Getter
     @Setter
