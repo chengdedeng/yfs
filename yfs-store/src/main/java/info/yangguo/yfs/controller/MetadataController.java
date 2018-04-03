@@ -7,14 +7,16 @@ import info.yangguo.yfs.config.YfsConfig;
 import info.yangguo.yfs.dto.Result;
 import info.yangguo.yfs.dto.ResultCode;
 import info.yangguo.yfs.po.FileMetadata;
-import info.yangguo.yfs.po.ServerMetadata;
 import info.yangguo.yfs.service.MetadataService;
 import io.atomix.core.map.ConsistentTreeMap;
 import io.atomix.utils.time.Versioned;
 import io.swagger.annotations.ApiOperation;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Controller;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestMethod;
+import org.springframework.web.bind.annotation.RequestParam;
 
 import javax.servlet.http.HttpServletResponse;
 import java.util.List;
@@ -75,21 +77,5 @@ public class MetadataController extends BaseController {
             result.setValue(ResultCode.C500.getDesc());
         }
         outputResult(response, result);
-    }
-
-    @ApiOperation(value = "get server metadata")
-    @RequestMapping(value = "server", method = {RequestMethod.GET})
-    @ResponseBody
-    public Result getServerMetadata() {
-        Result result = new Result<>();
-        try {
-            Map<String, ServerMetadata> serverMetadataMap = YfsConfig.serverMetadataConsistentMap.asJavaMap();
-            result.setValue(serverMetadataMap);
-            result.setCode(ResultCode.C200.getCode());
-        } catch (Exception e) {
-            result.setCode(ResultCode.C500.getCode());
-            result.setValue(ResultCode.C500.getDesc());
-        }
-        return result;
     }
 }

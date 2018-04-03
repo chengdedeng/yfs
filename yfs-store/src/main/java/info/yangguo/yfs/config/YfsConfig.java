@@ -68,10 +68,8 @@ import java.util.stream.Collectors;
 public class YfsConfig {
     private static Logger logger = LoggerFactory.getLogger(YfsConfig.class);
     private static final String fileMetadataMapName = "file-metadata";
-    private static final String serverMetadataMapName = "server-metadata";
     private static Serializer serializer = null;
     public static ConsistentTreeMap<FileMetadata> fileMetadataConsistentMap = null;
-    public static ConsistentMap<String, ServerMetadata> serverMetadataConsistentMap = null;
     public static ConsistentMap<String, StoreInfo> storeInfoConsistentMap = null;
     private static HttpClient httpClient;
     private static Map<String, ClusterProperties.ClusterNode> clusterNodeMap = new HashMap<>();
@@ -139,13 +137,6 @@ public class YfsConfig {
         }
         Atomix atomix = builder.withDataDirectory(metadataDir).build();
         atomix.start().join();
-        serverMetadataConsistentMap = atomix.<String, ServerMetadata>consistentMapBuilder(serverMetadataMapName)
-                .withPersistence(Persistence.PERSISTENT)
-                .withSerializer(serializer)
-                .withRetryDelay(Duration.ofSeconds(1))
-                .withMaxRetries(3)
-                .withBackups(2)
-                .build();
         fileMetadataConsistentMap = atomix.<FileMetadata>consistentTreeMapBuilder(fileMetadataMapName)
                 .withPersistence(Persistence.PERSISTENT)
                 .withSerializer(serializer)
