@@ -56,6 +56,7 @@ public class ExceptionHandler implements HandlerExceptionResolver {
     public ExceptionHandler createExceptionHandler() {
         return new ExceptionHandler();
     }
+
     public static void printWrite(String msg, HttpServletResponse response) {
         try {
             PrintWriter pw = response.getWriter();

@@ -15,6 +15,7 @@
  */
 package info.yangguo.yfs.config;
 
+import info.yangguo.yfs.HostResolverImpl;
 import info.yangguo.yfs.common.CommonConstant;
 import info.yangguo.yfs.common.po.StoreInfo;
 import info.yangguo.yfs.po.ClusterProperties;
@@ -36,11 +37,22 @@ import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 public class ClusterConfig {
-    private final static String keyPrefix = "yfs.gateway.";
-    public static ClusterProperties clusterProperties = new ClusterProperties();
-    public static ConsistentMap storeInfoMap = null;
+    private static ConsistentMap<String, StoreInfo> consistentMap = null;
 
-    static {
+    public static ConsistentMap<String, StoreInfo> getConsistentMap() {
+        if (consistentMap == null) {
+            synchronized (HostResolverImpl.class) {
+                if (consistentMap == null) {
+                    consistentMap = init();
+                }
+            }
+        }
+        return consistentMap;
+    }
+
+    public static ClusterProperties getClusterProperties() {
+        String keyPrefix = "yfs.gateway.";
+        ClusterProperties clusterProperties = new ClusterProperties();
         Map<String, String> map = PropertiesUtil.getProperty("cluster.properties");
         Set<Integer> nodeIds = new HashSet<>();
         map.entrySet().stream().forEach(entry -> {
@@ -86,25 +98,27 @@ public class ClusterConfig {
                 }
             }
         });
+        return clusterProperties;
     }
 
-    public static void init() {
+    private static ConsistentMap<String, StoreInfo> init() {
+        ClusterProperties clusterProperties = getClusterProperties();
         Atomix.Builder builder = Atomix.builder();
         clusterProperties.getNode().stream().forEach(clusterNode -> {
             if (clusterNode.getId().equals(clusterProperties.getLocal())) {
                 builder
                         .withLocalNode(Node.builder(clusterNode.getId())
                                 .withType(Node.Type.DATA)
-                                .withEndpoint(Endpoint.from(clusterNode.getHost(), clusterNode.getSocket_port()))
+                                .withEndpoint(Endpoint.from(clusterNode.getIp(), clusterNode.getSocket_port()))
                                 .build());
             }
         });
 
-        builder.withBootstrapNodes(clusterProperties.getNode().parallelStream().map(clusterNode -> {
+        builder.withBootstrapNodes(clusterProperties.getNode().stream().map(clusterNode -> {
             return Node
                     .builder(clusterNode.getId())
                     .withType(Node.Type.DATA)
-                    .withEndpoint(Endpoint.from(clusterNode.getHost(), clusterNode.getSocket_port())).build();
+                    .withEndpoint(Endpoint.from(clusterNode.getIp(), clusterNode.getSocket_port())).build();
         }).collect(Collectors.toList()));
         File metadataDir = null;
         if (clusterProperties.getMetadataDir().startsWith("/")) {
@@ -115,15 +129,12 @@ public class ClusterConfig {
         Atomix atomix = builder.withDataDirectory(metadataDir).build();
         atomix.start().join();
 
-        storeInfoMap = atomix.<String, StoreInfo>consistentMapBuilder(CommonConstant.storeInfoMapName)
+        return atomix.<String, StoreInfo>consistentMapBuilder(CommonConstant.storeInfoMapName)
                 .withPersistence(Persistence.PERSISTENT)
                 .withSerializer(Serializer.using(CommonConstant.kryoBuilder.build()))
                 .withRetryDelay(Duration.ofSeconds(1))
                 .withMaxRetries(3)
                 .withBackups(2)
                 .build();
-        storeInfoMap.addListener(event -> {
-            System.out.println(event.newValue().toString());
-        });
     }
 }

@@ -118,7 +118,7 @@ public class YfsConfig {
                 builder
                         .withLocalNode(Node.builder(clusterNode.getId())
                                 .withType(Node.Type.DATA)
-                                .withEndpoint(Endpoint.from(clusterNode.getHost(), clusterNode.getSocket_port()))
+                                .withEndpoint(Endpoint.from(clusterNode.getIp(), clusterNode.getSocket_port()))
                                 .build());
             }
         });
@@ -127,7 +127,7 @@ public class YfsConfig {
             return Node
                     .builder(clusterNode.getId())
                     .withType(Node.Type.DATA)
-                    .withEndpoint(Endpoint.from(clusterNode.getHost(), clusterNode.getSocket_port())).build();
+                    .withEndpoint(Endpoint.from(clusterNode.getIp(), clusterNode.getSocket_port())).build();
         }).collect(Collectors.toList()));
         File metadataDir = null;
         if (clusterProperties.getStore().getMetadata().getDir().startsWith("/")) {
@@ -205,7 +205,7 @@ public class YfsConfig {
     public Atomix getGatewayAtomix() {
         Atomix.Builder builder = Atomix.builder().withLocalNode(Node.builder(clusterProperties.getLocal())
                 .withType(Node.Type.CLIENT)
-                .withEndpoint(Endpoint.from(clusterProperties.getGateway().getHost(), clusterProperties.getGateway().getPort()))
+                .withEndpoint(Endpoint.from(clusterProperties.getGateway().getIp(), clusterProperties.getGateway().getPort()))
                 .build());
 
 
@@ -213,7 +213,7 @@ public class YfsConfig {
             return Node
                     .builder(clusterNode.getId())
                     .withType(Node.Type.DATA)
-                    .withEndpoint(Endpoint.from(clusterNode.getHost(), clusterNode.getSocket_port())).build();
+                    .withEndpoint(Endpoint.from(clusterNode.getIp(), clusterNode.getSocket_port())).build();
         }).collect(Collectors.toList()));
 
         Atomix atomix = builder.build();
@@ -225,8 +225,6 @@ public class YfsConfig {
                 .withMaxRetries(3)
                 .withBackups(2)
                 .build();
-        storeInfoConsistentMap.addListener(event -> {
-        });
         return atomix;
     }
 
@@ -235,7 +233,7 @@ public class YfsConfig {
         long checkSum = 0L;
         for (String addNode : addNodes) {
             ClusterProperties.ClusterNode clusterNode = clusterNodeMap.get(addNode);
-            String url = "http://" + clusterNode.getHost() + ":" + clusterNode.getHttp_port() + "/" + MetadataService.getKey(fileMetadata);
+            String url = "http://" + clusterNode.getIp() + ":" + clusterNode.getHttp_port() + "/" + MetadataService.getKey(fileMetadata);
             HttpUriRequest httpUriRequest = new HttpGet(url);
             String id = MetadataService.getKey(fileMetadata);
             try {

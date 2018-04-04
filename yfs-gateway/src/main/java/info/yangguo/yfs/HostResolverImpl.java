@@ -1,24 +1,29 @@
+/*
+ * Copyright 2018-present yangguo@outlook.com
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 package info.yangguo.yfs;
 
-import info.yangguo.yfs.util.PropertiesUtil;
 import info.yangguo.yfs.util.WeightedRoundRobinScheduling;
-import org.apache.http.client.HttpClient;
-import org.apache.http.client.methods.CloseableHttpResponse;
-import org.apache.http.client.methods.HttpGet;
-import org.apache.http.impl.client.HttpClientBuilder;
 import org.littleshoot.proxy.HostResolver;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.net.ConnectException;
 import java.net.InetSocketAddress;
 import java.net.UnknownHostException;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ScheduledThreadPoolExecutor;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.ConcurrentHashMap;
 
 
 /**
@@ -27,69 +32,13 @@ import java.util.concurrent.TimeUnit;
  * <p>
  * Description:
  */
-class HostResolverImpl implements HostResolver {
+public class HostResolverImpl implements HostResolver {
     private static Logger logger = LoggerFactory.getLogger(HostResolverImpl.class);
     private volatile static HostResolverImpl singleton;
-    private Map<String, WeightedRoundRobinScheduling> serverMap = new HashMap<>();
-    private final HttpClient client = HttpClientBuilder.create().build();
-
-    private class ServerCheckTask implements Runnable {
-        @Override
-        public void run() {
-            try {
-                for (Map.Entry<String, WeightedRoundRobinScheduling> entry : serverMap.entrySet()) {
-                    WeightedRoundRobinScheduling weightedRoundRobinScheduling = entry.getValue();
-                    List<WeightedRoundRobinScheduling.Server> delServers = new ArrayList<>();
-                    CloseableHttpResponse httpResponse = null;
-                    for (WeightedRoundRobinScheduling.Server server : weightedRoundRobinScheduling.unhealthilyServers) {
-                        HttpGet request = new HttpGet("http://" + server.getIp() + ":" + server.getPort());
-                        try {
-                            httpResponse = (CloseableHttpResponse) client.execute(request);
-                            weightedRoundRobinScheduling.healthilyServers.add(weightedRoundRobinScheduling.serversMap.get(server.getIp() + "_" + server.getPort()));
-                            delServers.add(server);
-                            logger.info("domain host->{},ip->{},port->{} is healthy", entry.getKey(), server.getIp(), server.getPort());
-                        } catch (ConnectException e1) {
-                            logger.warn("domain host->{},ip->{},port->{} is unhealthy", entry.getKey(), server.getIp(), server.getPort());
-                        } catch (Exception e2) {
-                            weightedRoundRobinScheduling.healthilyServers.add(weightedRoundRobinScheduling.serversMap.get(server.getIp() + "_" + server.getPort()));
-                            delServers.add(server);
-                            logger.info("domain host->{},ip->{},port->{} is healthy", server.getIp(), server.getPort());
-                        } finally {
-                            if (httpResponse != null) {
-                                httpResponse.close();
-                            }
-                        }
-                    }
-                    if (delServers.size() > 0) {
-                        weightedRoundRobinScheduling.unhealthilyServers.removeAll(delServers);
-                    }
-                }
-            } catch (Exception e) {
-                logger.error("server check task is error", e);
-            }
-        }
-    }
+    public static WeightedRoundRobinScheduling uploadServers = new WeightedRoundRobinScheduling();
+    public static Map<String, WeightedRoundRobinScheduling> downloadServers = new ConcurrentHashMap<>();
 
     private HostResolverImpl() {
-        Map<String, String> servers = PropertiesUtil.getProperty("upstream.properties");
-        for (Map.Entry<String, String> entry : servers.entrySet()) {
-            String hostInfo = entry.getKey();
-            String[] serversInfo = entry.getValue().split(",");
-            List<WeightedRoundRobinScheduling.Server> serverList = new ArrayList<>();
-            for (String serverInfo : serversInfo) {
-                String[] si = serverInfo.split(":");
-                if (si.length == 2) {
-                    WeightedRoundRobinScheduling.Server server = new WeightedRoundRobinScheduling.Server(si[0], Integer.valueOf(si[1]), 1);
-                    serverList.add(server);
-                } else if (si.length == 3) {
-                    WeightedRoundRobinScheduling.Server server = new WeightedRoundRobinScheduling.Server(si[0], Integer.valueOf(si[1]), Integer.valueOf(si[2]));
-                    serverList.add(server);
-                }
-            }
-            serverMap.put(hostInfo, new WeightedRoundRobinScheduling(serverList));
-        }
-        ScheduledThreadPoolExecutor scheduledThreadPoolExecutor = new ScheduledThreadPoolExecutor(1);
-        scheduledThreadPoolExecutor.scheduleAtFixedRate(new ServerCheckTask(), Integer.parseInt(Constant.gatewayConfs.get("gateway.lb.fail_timeout")), Integer.parseInt(Constant.gatewayConfs.get("gateway.lb.fail_timeout")), TimeUnit.SECONDS);
     }
 
     public static HostResolverImpl getSingleton() {
@@ -103,24 +52,22 @@ class HostResolverImpl implements HostResolver {
         return singleton;
     }
 
-
-    WeightedRoundRobinScheduling getServers(String key) {
-        return serverMap.get(key);
-    }
-
     @Override
     public InetSocketAddress resolve(String host, int port)
             throws UnknownHostException {
-        String key = host + "_" + port;
-        if (serverMap.containsKey(key)) {
-            WeightedRoundRobinScheduling.Server server = serverMap.get(key).getServer();
-            if (server != null) {
-                return new InetSocketAddress(server.getIp(), server.getPort());
-            } else {
-                return null;
-            }
+        String[] items = host.split("\\.");
+        WeightedRoundRobinScheduling.Server server = null;
+        if (items.length == 2) {
+            server = uploadServers.getServer();
+        } else if (items.length == 3) {
+            WeightedRoundRobinScheduling weightedRoundRobinScheduling = downloadServers.get(items[0]);
+            server = weightedRoundRobinScheduling.getServer();
+        }
+        if (server != null) {
+            logger.debug("host:{},port:{}-group:{},ip:{},port:{}", host, port, server.getGroup(), server.getIp(), server.getPort());
+            return new InetSocketAddress(server.getIp(), server.getPort());
         } else {
-            return null;
+            throw new UnknownHostException("host:" + host + ",port:" + port);
         }
     }
 }

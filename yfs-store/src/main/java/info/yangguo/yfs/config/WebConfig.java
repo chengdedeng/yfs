@@ -38,6 +38,7 @@ import javax.servlet.Filter;
 public class WebConfig {
     @Autowired
     private ClusterProperties clusterProperties;
+
     @Bean
     public static PropertySourcesPlaceholderConfigurer propertySourcesPlaceholderConfigurer() {
         return new PropertySourcesPlaceholderConfigurer();

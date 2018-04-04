@@ -1,10 +1,26 @@
+/*
+ * Copyright 2018-present yangguo@outlook.com
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 package info.yangguo.yfs.util;
 
+import com.google.common.collect.Lists;
+import lombok.Getter;
+import lombok.Setter;
+
 import java.math.BigInteger;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
-import java.util.concurrent.CopyOnWriteArrayList;
 
 /**
  * @author:杨果
@@ -14,14 +30,10 @@ import java.util.concurrent.CopyOnWriteArrayList;
  * <p>
  * 权重轮询调度算法(WeightedRound-RobinScheduling)-Java实现
  */
-
-
 public class WeightedRoundRobinScheduling {
     private int currentIndex = -1;// 上一次选择的服务器
     private int currentWeight = 0;// 当前调度的权值
-    public CopyOnWriteArrayList<Server> healthilyServers; //健康服务器集合
-    public CopyOnWriteArrayList<Server> unhealthilyServers = new CopyOnWriteArrayList<>(); //不健康服务器集合
-    public Map<String, Server> serversMap = new HashMap<>();
+    public List<Server> healthilyServers = Lists.newArrayList(); //健康服务器集合
 
     /**
      * 返回最大公约数
@@ -92,47 +104,21 @@ public class WeightedRoundRobinScheduling {
         }
     }
 
-    public WeightedRoundRobinScheduling(List<Server> healthilyServers) {
-        this.healthilyServers = new CopyOnWriteArrayList(healthilyServers);
-        for (Server server : healthilyServers) {
-            serversMap.put(server.getIp() + "_" + server.getPort(), server);
-        }
-    }
-
-
+    @Getter
+    @Setter
     public static class Server {
+        String group;
+        String id;
         String ip;
         int port;
         int weight;
 
-        public Server(String ip, int port, int weight) {
+        public Server(String group, String id, String ip, int port, int weight) {
             super();
+            this.group = group;
+            this.id = id;
             this.ip = ip;
             this.port = port;
-            this.weight = weight;
-        }
-
-        public String getIp() {
-            return ip;
-        }
-
-        public void setIp(String ip) {
-            this.ip = ip;
-        }
-
-        public int getPort() {
-            return port;
-        }
-
-        public void setPort(int port) {
-            this.port = port;
-        }
-
-        public int getWeight() {
-            return weight;
-        }
-
-        public void setWeight(int weight) {
             this.weight = weight;
         }
     }

@@ -41,7 +41,7 @@ public class Watchdog {
 
     @Scheduled(initialDelayString = "${yfs.store.watchdog.initial_delay}", fixedDelayString = "${yfs.store.watchdog.fixed_delay}")
     public void watchFile() {
-        logger.info("watchdog**************************file");
+        logger.debug("watchdog**************************file");
         Collection<Versioned<FileMetadata>> metadata = YfsConfig.fileMetadataConsistentMap.values();
         metadata.parallelStream().forEach(fileMetadataVersioned -> {
             FileMetadata fileMetadata = fileMetadataVersioned.value();
@@ -53,12 +53,12 @@ public class Watchdog {
                 YfsConfig.fileMetadataConsistentMap.replace(key, version, fileMetadata);
             }
         });
-        logger.info("file**************************watchdog");
+        logger.debug("file**************************watchdog");
     }
 
     @Scheduled(fixedRate = 5000)
     public void watchServer() {
-        logger.info("watchdog**************************server");
+        logger.debug("watchdog**************************server");
         StringBuilder fileDir = new StringBuilder();
         if (!clusterProperties.getStore().getFiledata().getDir().startsWith("/")) {
             fileDir.append(FileUtils.getUserDirectoryPath()).append("/");
@@ -85,7 +85,15 @@ public class Watchdog {
         StoreInfo storeInfo = new StoreInfo();
         try {
             storeInfo.setGroup(clusterProperties.getGroup());
-            storeInfo.setHost(clusterProperties.getGateway().getHost());
+            ClusterProperties.ClusterNode clusterNode = null;
+            for (ClusterProperties.ClusterNode node : clusterProperties.getStore().getNode()) {
+                if (node.getId().equals(clusterProperties.getLocal())) {
+                    clusterNode = node;
+                    break;
+                }
+            }
+            storeInfo.setHost(clusterNode.getIp());
+            storeInfo.setHttp_port(clusterNode.getHttp_port());
             storeInfo.setNodeId(clusterProperties.getLocal());
             storeInfo.setMetadataFreeSpaceKb(FileSystemUtils.freeSpaceKb(metadataDir));
             storeInfo.setFileFreeSpaceKb(FileSystemUtils.freeSpaceKb(fileDataDir));
@@ -94,6 +102,6 @@ public class Watchdog {
         } catch (IOException e) {
             logger.error("server check fail", e);
         }
-        logger.info("server**************************watchdog");
+        logger.debug("server**************************watchdog");
     }
 }

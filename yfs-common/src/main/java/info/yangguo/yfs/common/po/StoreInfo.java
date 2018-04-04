@@ -11,6 +11,6 @@ public class StoreInfo {
     private String host;
     private int http_port;
     private long updateTime;
-    private long metadataFreeSpaceKb;
-    private long fileFreeSpaceKb;
+    private Long metadataFreeSpaceKb;
+    private Long fileFreeSpaceKb;
 }

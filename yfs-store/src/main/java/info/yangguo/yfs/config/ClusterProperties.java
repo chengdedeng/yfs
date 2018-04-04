@@ -45,7 +45,7 @@ public class ClusterProperties {
     @Getter
     @Setter
     public static class Gateway {
-        private String host;
+        private String ip;
         private int port;
         private List<ClusterNode> node;
     }
@@ -54,7 +54,7 @@ public class ClusterProperties {
     @Setter
     public static class ClusterNode {
         private String id;
-        private String host;
+        private String ip;
         private int socket_port;
         private int http_port;
     }

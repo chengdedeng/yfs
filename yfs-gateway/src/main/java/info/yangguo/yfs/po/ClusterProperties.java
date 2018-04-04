@@ -26,13 +26,13 @@ import java.util.List;
 public class ClusterProperties {
     public String local;
     public String metadataDir;
-    public List<ClusterNode> node=new ArrayList<>();
+    public List<ClusterNode> node = new ArrayList<>();
 
     @Getter
     @Setter
     public static class ClusterNode {
         public String id;
-        public String host;
+        public String ip;
         public int socket_port;
     }
 }

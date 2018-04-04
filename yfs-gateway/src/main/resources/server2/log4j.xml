@@ -15,6 +15,9 @@
     <logger name="com">
         <level value="info"/>
     </logger>
+    <logger name="info.yangguo">
+        <level value="debug"/>
+    </logger>
     <root>
         <level value="info"/>
         <appender-ref ref="stdout"/>
