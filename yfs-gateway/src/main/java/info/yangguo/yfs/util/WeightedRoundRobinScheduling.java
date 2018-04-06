@@ -16,6 +16,7 @@
 package info.yangguo.yfs.util;
 
 import com.google.common.collect.Lists;
+import info.yangguo.yfs.common.po.StoreInfo;
 import lombok.Getter;
 import lombok.Setter;
 
@@ -106,20 +107,21 @@ public class WeightedRoundRobinScheduling {
 
     @Getter
     @Setter
-    public static class Server {
-        String group;
-        String id;
-        String ip;
-        int port;
+    public static class Server implements Cloneable{
+        //StoreInfo不用实现Cloneable，因为只需要对weight进行调节
+        StoreInfo storeInfo;
         int weight;
 
-        public Server(String group, String id, String ip, int port, int weight) {
-            super();
-            this.group = group;
-            this.id = id;
-            this.ip = ip;
-            this.port = port;
+        private Server() {
+        }
+
+        public Server(StoreInfo storeInfo,int weight) {
+            this.storeInfo=storeInfo;
             this.weight = weight;
+        }
+        @Override
+        public Object clone() throws CloneNotSupportedException {
+            return super.clone();
         }
     }
 }

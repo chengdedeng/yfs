@@ -24,6 +24,7 @@ import java.util.List;
 @Getter
 @Setter
 public class ClusterProperties {
+    public long protected_space;
     public String local;
     public String metadataDir;
     public List<ClusterNode> node = new ArrayList<>();

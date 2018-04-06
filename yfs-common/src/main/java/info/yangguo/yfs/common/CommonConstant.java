@@ -12,4 +12,16 @@ public class CommonConstant {
             .register(KryoNamespaces.BASIC)
             .register(Date.class)
             .register(StoreInfo.class);
+
+    /**
+     * 构造Storeinfo ConsistentMap的key
+     *
+     * @param group
+     * @param ip
+     * @param http_port
+     * @return
+     */
+    public static String storeInfoConsistentMapKey(String group, String ip, int http_port) {
+        return new StringBuilder().append(group).append("-").append(ip).append("-").append(http_port).toString();
+    }
 }

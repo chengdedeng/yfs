@@ -15,7 +15,6 @@
  */
 package info.yangguo.yfs.config;
 
-import info.yangguo.yfs.HostResolverImpl;
 import info.yangguo.yfs.common.CommonConstant;
 import info.yangguo.yfs.common.po.StoreInfo;
 import info.yangguo.yfs.po.ClusterProperties;
@@ -37,20 +36,27 @@ import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 public class ClusterConfig {
-    private static ConsistentMap<String, StoreInfo> consistentMap = null;
+    private static ClusterConfig clusterConfig = null;
 
-    public static ConsistentMap<String, StoreInfo> getConsistentMap() {
-        if (consistentMap == null) {
-            synchronized (HostResolverImpl.class) {
-                if (consistentMap == null) {
-                    consistentMap = init();
+    public ClusterProperties clusterProperties = null;
+    public Atomix atomix = null;
+    public ConsistentMap<String, StoreInfo> consistentMap = null;
+
+    private ClusterConfig() {
+    }
+
+    public static ClusterConfig getClusterConfig() {
+        if (clusterConfig == null) {
+            synchronized (ClusterConfig.class) {
+                if (clusterConfig == null) {
+                    clusterConfig = init();
                 }
             }
         }
-        return consistentMap;
+        return clusterConfig;
     }
 
-    public static ClusterProperties getClusterProperties() {
+    protected static ClusterProperties getClusterProperties() {
         String keyPrefix = "yfs.gateway.";
         ClusterProperties clusterProperties = new ClusterProperties();
         Map<String, String> map = PropertiesUtil.getProperty("cluster.properties");
@@ -81,6 +87,13 @@ public class ClusterConfig {
                     e.printStackTrace();
                 }
             }
+            if (field1.getType().getName().endsWith("long")) {
+                try {
+                    field1.set(clusterProperties, Long.valueOf(map.get(keyPrefix + field1.getName())));
+                } catch (IllegalAccessException e) {
+                    e.printStackTrace();
+                }
+            }
             if (field1.getType().getName().endsWith("List")) {
                 try {
                     List<ClusterProperties.ClusterNode> clusterNodeList = (List<ClusterProperties.ClusterNode>) field1.get(clusterProperties);
@@ -101,7 +114,7 @@ public class ClusterConfig {
         return clusterProperties;
     }
 
-    private static ConsistentMap<String, StoreInfo> init() {
+    private static ClusterConfig init() {
         ClusterProperties clusterProperties = getClusterProperties();
         Atomix.Builder builder = Atomix.builder();
         clusterProperties.getNode().stream().forEach(clusterNode -> {
@@ -129,12 +142,18 @@ public class ClusterConfig {
         Atomix atomix = builder.withDataDirectory(metadataDir).build();
         atomix.start().join();
 
-        return atomix.<String, StoreInfo>consistentMapBuilder(CommonConstant.storeInfoMapName)
+        ConsistentMap<String, StoreInfo> consistentMap = atomix.<String, StoreInfo>consistentMapBuilder(CommonConstant.storeInfoMapName)
                 .withPersistence(Persistence.PERSISTENT)
                 .withSerializer(Serializer.using(CommonConstant.kryoBuilder.build()))
                 .withRetryDelay(Duration.ofSeconds(1))
                 .withMaxRetries(3)
                 .withBackups(2)
                 .build();
+
+        ClusterConfig clusterConfig = new ClusterConfig();
+        clusterConfig.clusterProperties = clusterProperties;
+        clusterConfig.atomix = atomix;
+        clusterConfig.consistentMap = consistentMap;
+        return clusterConfig;
     }
 }

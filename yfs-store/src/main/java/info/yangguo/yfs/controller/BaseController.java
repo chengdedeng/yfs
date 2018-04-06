@@ -1,7 +1,7 @@
 package info.yangguo.yfs.controller;
 
+import info.yangguo.yfs.common.utils.JsonUtil;
 import info.yangguo.yfs.dto.Result;
-import info.yangguo.yfs.utils.JsonUtil;
 import org.apache.commons.io.IOUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

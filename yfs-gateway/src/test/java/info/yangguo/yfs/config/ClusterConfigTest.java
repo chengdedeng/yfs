@@ -1,6 +1,5 @@
-package info.yangguo.yfs;
+package info.yangguo.yfs.config;
 
-import info.yangguo.yfs.config.ClusterConfig;
 import info.yangguo.yfs.po.ClusterProperties;
 import org.junit.Assert;
 import org.junit.Test;

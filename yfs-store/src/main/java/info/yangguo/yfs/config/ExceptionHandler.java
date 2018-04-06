@@ -15,8 +15,8 @@
  */
 package info.yangguo.yfs.config;
 
+import info.yangguo.yfs.common.utils.JsonUtil;
 import info.yangguo.yfs.dto.ResultCode;
-import info.yangguo.yfs.utils.JsonUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.annotation.Bean;

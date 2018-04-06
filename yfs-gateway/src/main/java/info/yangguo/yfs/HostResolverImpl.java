@@ -35,8 +35,8 @@ import java.util.concurrent.ConcurrentHashMap;
 public class HostResolverImpl implements HostResolver {
     private static Logger logger = LoggerFactory.getLogger(HostResolverImpl.class);
     private volatile static HostResolverImpl singleton;
-    public static WeightedRoundRobinScheduling uploadServers = new WeightedRoundRobinScheduling();
-    public static Map<String, WeightedRoundRobinScheduling> downloadServers = new ConcurrentHashMap<>();
+    public static final WeightedRoundRobinScheduling uploadServers = new WeightedRoundRobinScheduling();
+    public static final Map<String, WeightedRoundRobinScheduling> downloadServers = new ConcurrentHashMap<>();
 
     private HostResolverImpl() {
     }
@@ -64,8 +64,7 @@ public class HostResolverImpl implements HostResolver {
             server = weightedRoundRobinScheduling.getServer();
         }
         if (server != null) {
-            logger.debug("host:{},port:{}-group:{},ip:{},port:{}", host, port, server.getGroup(), server.getIp(), server.getPort());
-            return new InetSocketAddress(server.getIp(), server.getPort());
+            return new InetSocketAddress(server.getStoreInfo().getIp(), server.getStoreInfo().getStoreHttpPort());
         } else {
             throw new UnknownHostException("host:" + host + ",port:" + port);
         }

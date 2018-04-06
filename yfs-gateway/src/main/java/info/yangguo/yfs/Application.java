@@ -41,8 +41,7 @@ public class Application {
         threadPoolConfiguration.withProxyToServerWorkerThreads(Constant.ProxyToServerWorkerThreads);
 
         InetSocketAddress inetSocketAddress = new InetSocketAddress(Constant.ServerPort);
-        ConsistentMap<String, StoreInfo> consistentMap = ClusterConfig.getConsistentMap();
-        Thread watchdog = new Thread(new Watchdog(consistentMap));
+        Thread watchdog = new Thread(new Watchdog());
         watchdog.setDaemon(true);
         watchdog.start();
 

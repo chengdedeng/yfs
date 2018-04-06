@@ -90,7 +90,7 @@ public class HttpFilterAdapterImpl extends HttpFiltersAdapter {
             ProxyToServerConnection proxyToServerConnection = (ProxyToServerConnection) field.get(clientToProxyConnection);
             String remoteHostName = proxyToServerConnection.getRemoteAddress().getAddress().getHostAddress();
             int remoteHostPort = proxyToServerConnection.getRemoteAddress().getPort();
-            Watchdog.removeStore(remoteHostName, remoteHostPort);
+            Watchdog.removeStoreByHttpPort(remoteHostName, remoteHostPort);
         } catch (Exception e) {
             logger.error("connection of proxy->server is failed", e);
         }
