@@ -15,7 +15,10 @@
  */
 package info.yangguo.yfs.config;
 
+import org.apache.coyote.http11.AbstractHttp11Protocol;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.context.embedded.tomcat.TomcatConnectorCustomizer;
+import org.springframework.boot.context.embedded.tomcat.TomcatEmbeddedServletContainerFactory;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -61,6 +64,20 @@ public class WebConfig {
     @Bean
     public StandardServletMultipartResolver getStandardServletMultipartResolver() {
         return new StandardServletMultipartResolver();
+    }
+
+    //https://stackoverflow.com/questions/27893610/commonsmultipartresolver-and-handlerexceptionresolver-working-inconsistently
+    @Bean
+    public TomcatEmbeddedServletContainerFactory tomcatEmbedded() {
+        TomcatEmbeddedServletContainerFactory tomcat = new TomcatEmbeddedServletContainerFactory();
+        tomcat.addConnectorCustomizers((TomcatConnectorCustomizer) connector -> {
+            // configure maxSwallowSize
+            if ((connector.getProtocolHandler() instanceof AbstractHttp11Protocol<?>)) {
+                // -1 means unlimited, accept bytes
+                ((AbstractHttp11Protocol<?>) connector.getProtocolHandler()).setMaxSwallowSize(-1);
+            }
+        });
+        return tomcat;
     }
 
     @Bean
