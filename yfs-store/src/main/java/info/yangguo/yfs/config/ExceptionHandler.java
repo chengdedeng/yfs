@@ -49,6 +49,7 @@ public class ExceptionHandler implements HandlerExceptionResolver {
             logger.error("Internal server error", ex);
         }
         printWrite(JsonUtil.toJson(result, true), response);
+        ModelAndView modelAndView=new ModelAndView();
         return new ModelAndView();
     }
 

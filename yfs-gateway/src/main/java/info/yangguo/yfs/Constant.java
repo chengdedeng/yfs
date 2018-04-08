@@ -36,6 +36,7 @@ public class Constant {
     public static int ClientToProxyWorkerThreads = Integer.parseInt(gatewayConfs.get("gateway.clientToProxyWorkerThreads"));
     public static int ProxyToServerWorkerThreads = Integer.parseInt(gatewayConfs.get("gateway.proxyToServerWorkerThreads"));
     public static int ServerPort = Integer.parseInt(gatewayConfs.get("gateway.serverPort"));
+    public static int IdleConnectionTimeout = Integer.parseInt(gatewayConfs.get("gateway.idleConnectionTimeout"));
 
     public static String getRealIp(HttpRequest httpRequest, ChannelHandlerContext channelHandlerContext) {
         List<String> headerValues = getHeaderValues(httpRequest, "X-Real-IP");

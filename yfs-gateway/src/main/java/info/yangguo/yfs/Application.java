@@ -47,6 +47,7 @@ public class Application {
 
         HttpProxyServerBootstrap httpProxyServerBootstrap = DefaultHttpProxyServer.bootstrap()
                 .withAddress(inetSocketAddress);
+        httpProxyServerBootstrap.withIdleConnectionTimeout(Integer.valueOf(Constant.IdleConnectionTimeout));
         httpProxyServerBootstrap.withServerResolver(HostResolverImpl.getSingleton());
         httpProxyServerBootstrap.withAllowRequestToOriginServer(true)
                 .withProxyAlias("yfs-gateway")
