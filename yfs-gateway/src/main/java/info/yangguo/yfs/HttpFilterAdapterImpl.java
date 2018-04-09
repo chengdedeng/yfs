@@ -109,6 +109,25 @@ public class HttpFilterAdapterImpl extends HttpFiltersAdapter {
         super.proxyToServerConnectionSucceeded(serverCtx);
     }
 
+    @Override
+    public void proxyToServerRequestSending() {
+        ClientToProxyConnection clientToProxyConnection = (ClientToProxyConnection) ctx.handler();
+        ProxyConnection proxyConnection = clientToProxyConnection.getProxyToServerConnection();
+        logger.debug("client channel:{}-{}", clientToProxyConnection.getChannel().localAddress().toString(), clientToProxyConnection.getChannel().remoteAddress().toString());
+        logger.debug("server channel:{}-{}", proxyConnection.getChannel().localAddress().toString(), proxyConnection.getChannel().remoteAddress().toString());
+        proxyConnection.getChannel().closeFuture().addListener(new GenericFutureListener() {
+            @Override
+            public void operationComplete(Future future) {
+                if (clientToProxyConnection.getChannel().isActive()) {
+                    logger.debug("channel:{}-{} will be closed", clientToProxyConnection.getChannel().localAddress().toString(), clientToProxyConnection.getChannel().remoteAddress().toString());
+                    clientToProxyConnection.getChannel().close();
+                } else {
+                    logger.debug("channel:{}-{} has been closed", clientToProxyConnection.getChannel().localAddress().toString(), clientToProxyConnection.getChannel().remoteAddress().toString());
+                }
+            }
+        });
+    }
+
     private static HttpResponse createResponse(HttpResponseStatus httpResponseStatus, HttpRequest originalRequest) {
         HttpHeaders httpHeaders = new DefaultHttpHeaders();
         httpHeaders.add("Transfer-Encoding", "chunked");
@@ -122,24 +141,5 @@ public class HttpFilterAdapterImpl extends HttpFiltersAdapter {
         }
         httpResponse.headers().add(httpHeaders);
         return httpResponse;
-    }
-
-    @Override
-    public HttpObject proxyToClientResponse(HttpObject httpObject) {
-        ClientToProxyConnection clientToProxyConnection = (ClientToProxyConnection) ctx.handler();
-        ProxyConnection proxyConnection = clientToProxyConnection.getProxyToServerConnection();
-        proxyConnection.getChannel().closeFuture().addListener(new GenericFutureListener() {
-            @Override
-            public void operationComplete(Future future) {
-                if (clientToProxyConnection.getChannel().isActive()) {
-                    logger.debug("channel:{} will be closed", clientToProxyConnection.getChannel().remoteAddress().toString());
-                    clientToProxyConnection.getChannel().close();
-                } else {
-                    logger.debug("channel:{} has been closed", clientToProxyConnection.getChannel().remoteAddress().toString());
-                }
-            }
-        });
-
-        return httpObject;
     }
 }
