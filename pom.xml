@@ -5,7 +5,7 @@
     <groupId>info.yangguo</groupId>
     <artifactId>yfs</artifactId>
     <packaging>pom</packaging>
-    <version>3.0</version>
+    <version>0.1</version>
     <modules>
         <module>yfs-gateway</module>
         <module>yfs-store</module>
