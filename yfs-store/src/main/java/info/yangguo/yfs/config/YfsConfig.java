@@ -20,20 +20,25 @@ import com.google.common.cache.CacheBuilder;
 import com.google.common.cache.RemovalListener;
 import com.google.common.cache.RemovalNotification;
 import info.yangguo.yfs.common.CommonConstant;
+import info.yangguo.yfs.common.po.FileMetadata;
 import info.yangguo.yfs.common.po.StoreInfo;
 import info.yangguo.yfs.common.utils.JsonUtil;
-import info.yangguo.yfs.po.FileMetadata;
-import info.yangguo.yfs.po.ServerMetadata;
 import info.yangguo.yfs.service.FileService;
 import info.yangguo.yfs.service.MetadataService;
-import io.atomix.cluster.Node;
+import io.atomix.cluster.Member;
+import io.atomix.cluster.discovery.BootstrapDiscoveryProvider;
 import io.atomix.core.Atomix;
-import io.atomix.core.map.ConsistentMap;
-import io.atomix.core.map.ConsistentTreeMap;
+import io.atomix.core.map.AtomicMap;
 import io.atomix.core.map.MapEvent;
-import io.atomix.messaging.Endpoint;
-import io.atomix.primitive.Persistence;
-import io.atomix.utils.serializer.Serializer;
+import io.atomix.core.profile.Profile;
+import io.atomix.primitive.Recovery;
+import io.atomix.primitive.partition.ManagedPartitionGroup;
+import io.atomix.primitive.protocol.ProxyProtocol;
+import io.atomix.protocols.raft.MultiRaftProtocol;
+import io.atomix.protocols.raft.ReadConsistency;
+import io.atomix.protocols.raft.partition.RaftPartitionGroup;
+import io.atomix.protocols.raft.session.CommunicationStrategy;
+import io.atomix.storage.StorageLevel;
 import io.atomix.utils.time.Versioned;
 import org.apache.commons.io.FileUtils;
 import org.apache.http.HttpResponse;
@@ -55,12 +60,12 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 import java.io.File;
-import java.time.Duration;
-import java.util.HashMap;
+import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
 @Configuration
@@ -68,17 +73,12 @@ import java.util.stream.Collectors;
 public class YfsConfig {
     private static Logger logger = LoggerFactory.getLogger(YfsConfig.class);
     private static final String fileMetadataMapName = "file-metadata";
-    private static Serializer serializer = null;
-    public static ConsistentTreeMap<FileMetadata> fileMetadataConsistentMap = null;
-    public static ConsistentMap<String, StoreInfo> storeInfoConsistentMap = null;
+    public static AtomicMap<String, FileMetadata> fileMetadataMap = null;
+    public static AtomicMap<String, StoreInfo> storeInfoMap = null;
     private static HttpClient httpClient;
-    private static Map<String, ClusterProperties.ClusterNode> clusterNodeMap = new HashMap<>();
     public static Cache<String, CountDownLatch> cache;
 
     static {
-        CommonConstant.kryoBuilder.register(FileMetadata.class).register(ServerMetadata.class);
-        serializer = Serializer.using(CommonConstant.kryoBuilder.build());
-
         Registry<ConnectionSocketFactory> registry = RegistryBuilder.<ConnectionSocketFactory>create()
                 .register("http", PlainConnectionSocketFactory.getSocketFactory())
                 .build();
@@ -106,45 +106,102 @@ public class YfsConfig {
                 .build();
     }
 
+    private final Function<ClusterProperties, Map<String, ClusterProperties.ClusterNode>> storeNodeMap = properties -> properties.getStore().getNode().stream().collect(Collectors.toMap(node -> node.getId(), node -> node));
+    private final Function<ClusterProperties, Map<String, ClusterProperties.ClusterNode>> gatewayNodeMap = properties -> properties.getGateway().getNode().stream().collect(Collectors.toMap(node -> node.getId(), node -> node));
+
+    private final Function<ClusterProperties, List<Member>> storeMembers = properties -> {
+        Map<String, ClusterProperties.ClusterNode> nodes = storeNodeMap.apply(properties);
+        return nodes.entrySet().stream().map(node -> {
+            return Member.builder()
+                    .withId(node.getValue().getId())
+                    .withAddress(node.getValue().getIp(), node.getValue().getSocket_port())
+                    .build();
+        }).collect(Collectors.toList());
+    };
+
+    private final Function<ClusterProperties, List<Member>> gatewayMembers = properties -> {
+        Map<String, ClusterProperties.ClusterNode> nodes = gatewayNodeMap.apply(properties);
+        return nodes.entrySet().stream().map(node -> {
+            return Member.builder()
+                    .withId(node.getValue().getId())
+                    .withAddress(node.getValue().getIp(), node.getValue().getSocket_port())
+                    .build();
+        }).collect(Collectors.toList());
+    };
+
+    private final Function<ClusterProperties, Member> storeMember = properties -> {
+        ClusterProperties.ClusterNode clusterNode = storeNodeMap.apply(properties).get(properties.getLocal());
+        return Member.builder()
+                .withId(properties.getLocal())
+                .withAddress(clusterNode.getIp(), clusterNode.getSocket_port())
+                .build();
+    };
+
+    private final Function<ClusterProperties, ManagedPartitionGroup> storeManagementGroup = properties -> {
+        List<Member> ms = storeMembers.apply(properties);
+        String metadataDir = null;
+        if (properties.getStore().getMetadata().getDir().startsWith("/")) {
+            metadataDir = String.format(properties.getStore().getMetadata().getDir() + "/%s", properties.getLocal());
+        } else {
+            metadataDir = FileUtils.getUserDirectoryPath() + "/" + String.format(properties.getStore().getMetadata().getDir() + "/%s", properties.getLocal());
+        }
+        ManagedPartitionGroup managementGroup = RaftPartitionGroup.builder("system")
+                .withMembers(ms.stream().map(m -> m.id().id()).collect(Collectors.toSet()))
+                .withNumPartitions(1)
+                .withPartitionSize(ms.size())
+                .withDataDirectory(new File(metadataDir + "/systme"))
+                .build();
+
+
+        return managementGroup;
+    };
+
+    private final Function<ClusterProperties, ManagedPartitionGroup> storeDataGroup = clusterProperties -> {
+        List<Member> ms = storeMembers.apply(clusterProperties);
+
+        String metadataDir = null;
+        if (clusterProperties.getStore().getMetadata().getDir().startsWith("/")) {
+            metadataDir = String.format(clusterProperties.getStore().getMetadata().getDir() + "/%s", clusterProperties.getLocal());
+        } else {
+            metadataDir = FileUtils.getUserDirectoryPath() + "/" + String.format(clusterProperties.getStore().getMetadata().getDir() + "/%s", clusterProperties.getLocal());
+        }
+
+        ManagedPartitionGroup dataGroup = RaftPartitionGroup.builder("data")
+                .withMembers(ms.stream().map(m -> m.id().id()).collect(Collectors.toSet()))
+                .withNumPartitions(7)
+                .withPartitionSize(3)
+                .withStorageLevel(StorageLevel.DISK)
+                .withFlushOnCommit(false)
+                .withDataDirectory(new File(metadataDir + "/data"))
+                .build();
+
+        return dataGroup;
+    };
+
     @Autowired
     private ClusterProperties clusterProperties;
 
     @Bean(name = "storeAtomix")
     public Atomix getStoreAtomix() {
-        Atomix.Builder builder = Atomix.builder();
-        clusterProperties.getStore().getNode().stream().forEach(clusterNode -> {
-            clusterNodeMap.put(clusterNode.getId(), clusterNode);
-            if (clusterNode.getId().equals(clusterProperties.getLocal())) {
-                builder
-                        .withLocalNode(Node.builder(clusterNode.getId())
-                                .withType(Node.Type.DATA)
-                                .withEndpoint(Endpoint.from(clusterNode.getIp(), clusterNode.getSocket_port()))
-                                .build());
-            }
-        });
-
-        builder.withBootstrapNodes(clusterProperties.getStore().getNode().parallelStream().map(clusterNode -> {
-            return Node
-                    .builder(clusterNode.getId())
-                    .withType(Node.Type.DATA)
-                    .withEndpoint(Endpoint.from(clusterNode.getIp(), clusterNode.getSocket_port())).build();
-        }).collect(Collectors.toList()));
-        File metadataDir = null;
-        if (clusterProperties.getStore().getMetadata().getDir().startsWith("/")) {
-            metadataDir = new File(clusterProperties.getStore().getMetadata().getDir() + "/" + clusterProperties.getLocal());
-        } else {
-            metadataDir = new File(FileUtils.getUserDirectoryPath(), clusterProperties.getStore().getMetadata().getDir() + "/" + clusterProperties.getLocal());
-        }
-        Atomix atomix = builder.withDataDirectory(metadataDir).build();
-        atomix.start().join();
-        fileMetadataConsistentMap = atomix.<FileMetadata>consistentTreeMapBuilder(fileMetadataMapName)
-                .withPersistence(Persistence.PERSISTENT)
-                .withSerializer(serializer)
-                .withRetryDelay(Duration.ofSeconds(1))
-                .withMaxRetries(3)
-                .withBackups(2)
+        Member m = storeMember.apply(clusterProperties);
+        List<Member> ms = storeMembers.apply(clusterProperties);
+        Atomix atomix = Atomix.builder()
+                .withMemberId(m.id())
+                .withAddress(m.address())
+                .withMembershipProvider(BootstrapDiscoveryProvider.builder()
+                        .withNodes((Collection) ms)
+                        .build())
+                .withManagementGroup(storeManagementGroup.apply(clusterProperties))
+                .withPartitionGroups(storeDataGroup.apply(clusterProperties))
                 .build();
-        fileMetadataConsistentMap.addListener(event -> {
+        atomix.start().join();
+        fileMetadataMap = atomix.<String, FileMetadata>atomicMapBuilder(fileMetadataMapName)
+                .withProtocol(MultiRaftProtocol.builder()
+                        .withReadConsistency(ReadConsistency.LINEARIZABLE)
+                        .build())
+                .withSerializer(CommonConstant.protocolSerializer)
+                .build();
+        fileMetadataMap.addListener(event -> {
             switch (event.type()) {
                 case INSERT:
                     Versioned<FileMetadata> tmp1 = event.newValue();
@@ -203,36 +260,31 @@ public class YfsConfig {
 
     @Bean(name = "gatewayAtomix")
     public Atomix getGatewayAtomix() {
-        Atomix.Builder builder = Atomix.builder().withLocalNode(Node.builder(clusterProperties.getLocal())
-                .withType(Node.Type.CLIENT)
-                .withEndpoint(Endpoint.from(clusterProperties.getGateway().getIp(), clusterProperties.getGateway().getPort()))
-                .build());
+        List<Member> ms = gatewayMembers.apply(clusterProperties);
+        Atomix atomix = Atomix.builder()
+                .withMemberId(clusterProperties.getLocal())
+                .withAddress(clusterProperties.getGateway().getIp(),clusterProperties.getGateway().getPort())
+                .withMembershipProvider(BootstrapDiscoveryProvider.builder()
+                        .withNodes((Collection) ms)
+                        .build())
+                .withProfiles(Profile.client())
+                .build();
 
-
-        builder.withBootstrapNodes(clusterProperties.getGateway().getNode().parallelStream().map(clusterNode -> {
-            return Node
-                    .builder(clusterNode.getId())
-                    .withType(Node.Type.DATA)
-                    .withEndpoint(Endpoint.from(clusterNode.getIp(), clusterNode.getSocket_port())).build();
-        }).collect(Collectors.toList()));
-
-        Atomix atomix = builder.build();
         atomix.start().join();
-        storeInfoConsistentMap = atomix.<String, StoreInfo>consistentMapBuilder(CommonConstant.storeInfoMapName)
-                .withPersistence(Persistence.PERSISTENT)
-                .withSerializer(serializer)
-                .withRetryDelay(Duration.ofSeconds(1))
-                .withMaxRetries(3)
-                .withBackups(2)
+        storeInfoMap = atomix.<String, StoreInfo>atomicMapBuilder(CommonConstant.storeInfoMapName)
+                .withProtocol(MultiRaftProtocol.builder()
+                        .withReadConsistency(ReadConsistency.LINEARIZABLE)
+                        .build())
+                .withSerializer(CommonConstant.protocolSerializer)
                 .build();
         return atomix;
     }
 
 
-    private static long syncFile(ClusterProperties clusterProperties, List<String> addNodes, FileMetadata fileMetadata) {
+    private long syncFile(ClusterProperties clusterProperties, List<String> addNodes, FileMetadata fileMetadata) {
         long checkSum = 0L;
         for (String addNode : addNodes) {
-            ClusterProperties.ClusterNode clusterNode = clusterNodeMap.get(addNode);
+            ClusterProperties.ClusterNode clusterNode = storeNodeMap.apply(clusterProperties).get(addNode);
             String url = "http://" + clusterNode.getIp() + ":" + clusterNode.getHttp_port() + "/" + MetadataService.getKey(fileMetadata);
             HttpUriRequest httpUriRequest = new HttpGet(url);
             String id = MetadataService.getKey(fileMetadata);
@@ -254,13 +306,13 @@ public class YfsConfig {
         boolean result = false;
         FileMetadata fileMetadata = null;
         try {
-            Versioned<FileMetadata> tmp = fileMetadataConsistentMap.get(key);
+            Versioned<FileMetadata> tmp = fileMetadataMap.get(key);
             long version = tmp.version();
             fileMetadata = tmp.value();
             if (!fileMetadata.getAddNodes().contains(clusterProperties.getLocal())) {
                 fileMetadata.getAddNodes().add(clusterProperties.getLocal());
             }
-            result = fileMetadataConsistentMap.replace(key, version, fileMetadata);
+            result = fileMetadataMap.replace(key, version, fileMetadata);
         } catch (Exception e) {
             logger.warn("{} UpdateAddNodes Failure:{}", eventType, key, e);
         }
@@ -275,17 +327,17 @@ public class YfsConfig {
         boolean result = false;
         FileMetadata fileMetadata = null;
         try {
-            Versioned<FileMetadata> tmp = fileMetadataConsistentMap.get(key);
+            Versioned<FileMetadata> tmp = fileMetadataMap.get(key);
             long version = tmp.version();
             fileMetadata = tmp.value();
             if (!fileMetadata.getRemoveNodes().contains(clusterProperties.getLocal())) {
                 fileMetadata.getRemoveNodes().add(clusterProperties.getLocal());
             }
             if (fileMetadata.getRemoveNodes().size() == clusterProperties.getStore().getNode().size()) {
-                fileMetadataConsistentMap.remove(key);
+                fileMetadataMap.remove(key);
                 result = true;
             } else {
-                result = fileMetadataConsistentMap.replace(key, version, fileMetadata);
+                result = fileMetadataMap.replace(key, version, fileMetadata);
             }
         } catch (Exception e) {
             logger.warn("UpdateRemoveNodes Failure:{}", key, e);

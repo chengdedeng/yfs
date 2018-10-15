@@ -1,4 +1,4 @@
-package info.yangguo.yfs.po;
+package info.yangguo.yfs.common.po;
 
 import lombok.Getter;
 import lombok.Setter;

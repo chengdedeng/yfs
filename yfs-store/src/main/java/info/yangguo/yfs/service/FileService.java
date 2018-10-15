@@ -16,8 +16,8 @@
 package info.yangguo.yfs.service;
 
 import com.google.common.hash.Hashing;
+import info.yangguo.yfs.common.po.FileMetadata;
 import info.yangguo.yfs.config.ClusterProperties;
-import info.yangguo.yfs.po.FileMetadata;
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.io.IOUtils;
 import org.apache.http.HttpResponse;

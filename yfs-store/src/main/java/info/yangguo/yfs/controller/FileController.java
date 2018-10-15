@@ -15,11 +15,11 @@
  */
 package info.yangguo.yfs.controller;
 
+import info.yangguo.yfs.common.po.FileMetadata;
 import info.yangguo.yfs.common.utils.JsonUtil;
 import info.yangguo.yfs.config.ClusterProperties;
 import info.yangguo.yfs.dto.Result;
 import info.yangguo.yfs.dto.ResultCode;
-import info.yangguo.yfs.po.FileMetadata;
 import info.yangguo.yfs.service.FileService;
 import info.yangguo.yfs.service.MetadataService;
 import io.swagger.annotations.ApiOperation;

@@ -45,7 +45,12 @@
         <dependency>
             <groupId>io.atomix</groupId>
             <artifactId>atomix</artifactId>
-            <version>2.1.0-beta2</version>
+            <version>3.0.6</version>
+        </dependency>
+        <dependency>
+            <groupId>io.atomix</groupId>
+            <artifactId>atomix-raft</artifactId>
+            <version>3.0.6</version>
         </dependency>
     </dependencies>
 </project>

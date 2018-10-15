@@ -15,11 +15,9 @@
  */
 package info.yangguo.yfs;
 
-import info.yangguo.yfs.common.po.StoreInfo;
 import info.yangguo.yfs.config.ClusterConfig;
 import info.yangguo.yfs.config.Watchdog;
 import info.yangguo.yfs.util.NetUtils;
-import io.atomix.core.map.ConsistentMap;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.handler.codec.http.HttpRequest;
 import org.littleshoot.proxy.*;
@@ -40,11 +38,12 @@ public class Application {
         threadPoolConfiguration.withClientToProxyWorkerThreads(Constant.ClientToProxyWorkerThreads);
         threadPoolConfiguration.withProxyToServerWorkerThreads(Constant.ProxyToServerWorkerThreads);
 
-        InetSocketAddress inetSocketAddress = new InetSocketAddress(Constant.ServerPort);
-        Thread watchdog = new Thread(new Watchdog());
-        watchdog.setDaemon(true);
-        watchdog.start();
+        Watchdog watchdog = new Watchdog((new ClusterConfig()));
+        Thread watchdogThread = new Thread(watchdog);
+        watchdogThread.setDaemon(true);
+        watchdogThread.start();
 
+        InetSocketAddress inetSocketAddress = new InetSocketAddress(Constant.ServerPort);
         HttpProxyServerBootstrap httpProxyServerBootstrap = DefaultHttpProxyServer.bootstrap()
                 .withAddress(inetSocketAddress);
         httpProxyServerBootstrap.withIdleConnectionTimeout(Integer.valueOf(Constant.IdleConnectionTimeout));
@@ -86,7 +85,7 @@ public class Application {
                 .withFiltersSource(new HttpFiltersSourceAdapter() {
                     @Override
                     public HttpFilters filterRequest(HttpRequest originalRequest, ChannelHandlerContext ctx) {
-                        return new HttpFilterAdapterImpl(originalRequest, ctx);
+                        return new HttpFilterAdapterImpl(originalRequest, ctx, watchdog);
                     }
                 })
                 .start();

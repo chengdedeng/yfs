@@ -16,9 +16,9 @@
 package info.yangguo.yfs.config;
 
 import info.yangguo.yfs.common.CommonConstant;
+import info.yangguo.yfs.common.po.FileMetadata;
 import info.yangguo.yfs.common.po.StoreInfo;
 import info.yangguo.yfs.common.utils.JsonUtil;
-import info.yangguo.yfs.po.FileMetadata;
 import info.yangguo.yfs.service.MetadataService;
 import io.atomix.utils.time.Versioned;
 import org.apache.commons.io.FileSystemUtils;
@@ -43,7 +43,7 @@ public class Watchdog {
     @Scheduled(initialDelayString = "${yfs.store.watchdog.initial_delay}", fixedDelayString = "${yfs.store.watchdog.fixed_delay}")
     public void watchFile() {
         logger.debug("watchdog**************************file");
-        Collection<Versioned<FileMetadata>> metadata = YfsConfig.fileMetadataConsistentMap.values();
+        Collection<Versioned<FileMetadata>> metadata = YfsConfig.fileMetadataMap.values();
         metadata.parallelStream().forEach(fileMetadataVersioned -> {
             FileMetadata fileMetadata = fileMetadataVersioned.value();
             String key = MetadataService.getKey(fileMetadata);
@@ -51,7 +51,7 @@ public class Watchdog {
             if ((fileMetadata.getRemoveNodes().size() > 0 && !fileMetadata.getRemoveNodes().contains(clusterProperties.getLocal()))
                     || (fileMetadata.getRemoveNodes().size() == 0 && !fileMetadata.getAddNodes().contains(clusterProperties.getLocal()))) {
                 logger.info("Resync:\n{}", JsonUtil.toJson(fileMetadata, true));
-                YfsConfig.fileMetadataConsistentMap.replace(key, version, fileMetadata);
+                YfsConfig.fileMetadataMap.replace(key, version, fileMetadata);
             }
         });
         logger.debug("file**************************watchdog");
@@ -103,7 +103,7 @@ public class Watchdog {
                     FileSystemUtils.freeSpaceKb(fileDataDir));
 
 
-            YfsConfig.storeInfoConsistentMap.put(CommonConstant.storeInfoConsistentMapKey(clusterProperties.getGroup(), clusterNode.getIp(), clusterNode.getHttp_port()), storeInfo);
+            YfsConfig.storeInfoMap.put(CommonConstant.storeInfoConsistentMapKey(clusterProperties.getGroup(), clusterNode.getIp(), clusterNode.getHttp_port()), storeInfo);
         } catch (IOException e) {
             logger.error("server check fail", e);
         }

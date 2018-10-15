@@ -51,9 +51,12 @@ public class HttpFilterAdapterImpl extends HttpFiltersAdapter {
         }
     }
 
+    private Watchdog watchdog;
 
-    public HttpFilterAdapterImpl(HttpRequest originalRequest, ChannelHandlerContext ctx) {
+
+    public HttpFilterAdapterImpl(HttpRequest originalRequest, ChannelHandlerContext ctx,Watchdog watchdog) {
         super(originalRequest, ctx);
+        this.watchdog=watchdog;
     }
 
 
@@ -90,7 +93,7 @@ public class HttpFilterAdapterImpl extends HttpFiltersAdapter {
             ProxyToServerConnection proxyToServerConnection = clientToProxyConnection.getProxyToServerConnection();
             String remoteHostName = proxyToServerConnection.getRemoteAddress().getAddress().getHostAddress();
             int remoteHostPort = proxyToServerConnection.getRemoteAddress().getPort();
-            Watchdog.removeStoreByHttpPort(remoteHostName, remoteHostPort);
+            watchdog.removeStoreByHttpPort(remoteHostName, remoteHostPort);
         } catch (Exception e) {
             logger.error("connection of proxy->server is failed", e);
         }

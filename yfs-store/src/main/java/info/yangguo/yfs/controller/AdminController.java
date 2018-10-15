@@ -1,10 +1,10 @@
 package info.yangguo.yfs.controller;
 
+import info.yangguo.yfs.common.po.FileMetadata;
 import info.yangguo.yfs.config.ClusterProperties;
 import info.yangguo.yfs.config.YfsConfig;
 import info.yangguo.yfs.dto.Result;
 import info.yangguo.yfs.dto.ResultCode;
-import info.yangguo.yfs.po.FileMetadata;
 import info.yangguo.yfs.service.MetadataService;
 import io.atomix.utils.time.Versioned;
 import io.swagger.annotations.ApiOperation;
@@ -31,12 +31,12 @@ public class AdminController extends BaseController {
         Result result = new Result<>();
         HashSet<String> anomalyFile = new HashSet<>();
         try {
-            YfsConfig.fileMetadataConsistentMap.values().stream().forEach(fileMetadataVersioned -> {
+            YfsConfig.fileMetadataMap.values().stream().forEach(fileMetadataVersioned -> {
                 long version = fileMetadataVersioned.version();
                 FileMetadata fileMetadata = fileMetadataVersioned.value();
                 fileMetadata.getAddNodes().remove(node);
                 try {
-                    if (false == YfsConfig.fileMetadataConsistentMap.replace(MetadataService.getKey(fileMetadata), version, fileMetadata)) {
+                    if (false == YfsConfig.fileMetadataMap.replace(MetadataService.getKey(fileMetadata), version, fileMetadata)) {
                         anomalyFile.add(MetadataService.getKey(fileMetadata));
                     }
                 } catch (Exception e) {
@@ -62,11 +62,11 @@ public class AdminController extends BaseController {
         Result result = new Result<>();
         try {
             String key = MetadataService.getKey(clusterProperties.getGroup(), partition, name);
-            Versioned<FileMetadata> versioned = YfsConfig.fileMetadataConsistentMap.get(key);
+            Versioned<FileMetadata> versioned = YfsConfig.fileMetadataMap.get(key);
             long version = versioned.version();
             FileMetadata fileMetadata = versioned.value();
             fileMetadata.getAddNodes().remove(node);
-            if (false == YfsConfig.fileMetadataConsistentMap.replace(key, version, fileMetadata)) {
+            if (false == YfsConfig.fileMetadataMap.replace(key, version, fileMetadata)) {
                 result.setCode(ResultCode.C202.getCode());
             } else {
                 result.setCode(ResultCode.C200.getCode());

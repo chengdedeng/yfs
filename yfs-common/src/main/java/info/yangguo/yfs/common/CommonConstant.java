@@ -1,17 +1,24 @@
 package info.yangguo.yfs.common;
 
+import info.yangguo.yfs.common.po.FileMetadata;
+import info.yangguo.yfs.common.po.ServerMetadata;
 import info.yangguo.yfs.common.po.StoreInfo;
-import io.atomix.utils.serializer.KryoNamespace;
-import io.atomix.utils.serializer.KryoNamespaces;
+import io.atomix.utils.serializer.Namespace;
+import io.atomix.utils.serializer.Serializer;
 
+import java.util.ArrayList;
 import java.util.Date;
 
 public class CommonConstant {
     public static final String storeInfoMapName = "store-info";
-    public static final KryoNamespace.Builder kryoBuilder = KryoNamespace.builder()
-            .register(KryoNamespaces.BASIC)
+
+    public static final Serializer protocolSerializer = Serializer.using(Namespace.builder()
+            .register(ArrayList.class)
             .register(Date.class)
-            .register(StoreInfo.class);
+            .register(StoreInfo.class)
+            .register(FileMetadata.class)
+            .register(ServerMetadata.class)
+            .build());
 
     /**
      * 构造Storeinfo ConsistentMap的key

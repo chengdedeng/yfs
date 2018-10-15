@@ -2,15 +2,17 @@ package info.yangguo.yfs.controller;
 
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
+import info.yangguo.yfs.common.po.FileMetadata;
 import info.yangguo.yfs.config.ClusterProperties;
 import info.yangguo.yfs.config.YfsConfig;
 import info.yangguo.yfs.dto.Result;
 import info.yangguo.yfs.dto.ResultCode;
-import info.yangguo.yfs.po.FileMetadata;
 import info.yangguo.yfs.service.MetadataService;
-import io.atomix.core.map.ConsistentTreeMap;
+import io.atomix.core.iterator.SyncIterator;
+import io.atomix.core.map.AtomicMap;
 import io.atomix.utils.time.Versioned;
 import io.swagger.annotations.ApiOperation;
+import io.swagger.annotations.ApiParam;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -30,29 +32,31 @@ public class MetadataController extends BaseController {
 
     @ApiOperation(value = "get all file metadata by paging query")
     @RequestMapping(value = "file", method = {RequestMethod.GET})
-    public void getAllFileMetadata(@RequestParam("pageSize") Integer pageSize, @RequestParam(value = "index", required = false) String index, HttpServletResponse response) {
+    public void getAllFileMetadata(@ApiParam(value = "每页的条数", required = true) @RequestParam("pageSize") Integer pageSize, @ApiParam(value = "页码，起始码为1。", required = true) @RequestParam(value = "page") Integer page, HttpServletResponse response) {
         Result result = new Result<>();
         Map<String, Object> values = Maps.newHashMap();
         try {
-            ConsistentTreeMap<FileMetadata> consistentMap = YfsConfig.fileMetadataConsistentMap;
-            values.put("count", consistentMap.size());
+            AtomicMap<String, FileMetadata> atomicMap = YfsConfig.fileMetadataMap;
+            values.put("count", atomicMap.size());
+            values.put("page", page);
             values.put("pageSize", pageSize);
+            Integer begin = (page - 1) * pageSize;
+            Integer end = page * pageSize;
             List<FileMetadata> metadataList = Lists.newArrayList();
-            if (index == null) {
-                index = consistentMap.firstKey();
-            }
-
-            for (int i = 0; i < pageSize; i++) {
-                if (index == null)
-                    break;
-                Versioned<FileMetadata> versioned = consistentMap.get(index);
-                if (versioned != null) {
-                    metadataList.add(versioned.value());
-                    index = consistentMap.higherKey(index);
+            if (begin < atomicMap.size()) {
+                SyncIterator<Map.Entry<String, Versioned<FileMetadata>>> iterator = atomicMap.entrySet().iterator();
+                Integer i = 0;
+                while (iterator.hasNext()) {
+                    if (i >= begin && i < end) {
+                        Map.Entry<String, Versioned<FileMetadata>> entry = iterator.next();
+                        metadataList.add(entry.getValue().value());
+                    } else if (i > end) {
+                        break;
+                    }
+                    i++;
                 }
             }
-            values.put("value", metadataList);
-            values.put("index", index);
+            values.put("values", metadataList);
 
             result.setValue(values);
             result.setCode(ResultCode.C200.getCode());
@@ -69,7 +73,7 @@ public class MetadataController extends BaseController {
         Result result = new Result<>();
         try {
             String key = MetadataService.getKey(clusterProperties.getGroup(), partition, name);
-            FileMetadata metadata = YfsConfig.fileMetadataConsistentMap.get(key).value();
+            FileMetadata metadata = YfsConfig.fileMetadataMap.get(key).value();
             result.setValue(metadata);
             result.setCode(ResultCode.C200.getCode());
         } catch (Exception e) {

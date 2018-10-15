@@ -15,9 +15,9 @@
  */
 package info.yangguo.yfs.service;
 
+import info.yangguo.yfs.common.po.FileMetadata;
 import info.yangguo.yfs.config.ClusterProperties;
 import info.yangguo.yfs.config.YfsConfig;
-import info.yangguo.yfs.po.FileMetadata;
 import io.atomix.utils.time.Versioned;
 
 import java.util.concurrent.CountDownLatch;
@@ -29,7 +29,7 @@ public class MetadataService {
         fileMetadata.getAddNodes().add(clusterProperties.getLocal());
         CountDownLatch countDownLatch = new CountDownLatch(qos);
         YfsConfig.cache.put(getKey(fileMetadata), countDownLatch);
-        YfsConfig.fileMetadataConsistentMap.put(getKey(fileMetadata), fileMetadata);
+        YfsConfig.fileMetadataMap.put(getKey(fileMetadata), fileMetadata);
         //Preventing network traffic from failing
         countDownLatch.countDown();
         result = countDownLatch.await(clusterProperties.getStore().getQos_max_time(), TimeUnit.SECONDS);
@@ -39,12 +39,12 @@ public class MetadataService {
 
     public static boolean softDelete(ClusterProperties clusterProperties, FileMetadata fileMetadata) {
         boolean result = false;
-        Versioned<FileMetadata> tmp = YfsConfig.fileMetadataConsistentMap.get(getKey(fileMetadata));
+        Versioned<FileMetadata> tmp = YfsConfig.fileMetadataMap.get(getKey(fileMetadata));
         if (tmp != null) {
             long version = tmp.version();
             fileMetadata = tmp.value();
             fileMetadata.getRemoveNodes().add(clusterProperties.getLocal());
-            result = YfsConfig.fileMetadataConsistentMap.replace(getKey(fileMetadata), version, fileMetadata);
+            result = YfsConfig.fileMetadataMap.replace(getKey(fileMetadata), version, fileMetadata);
         }
         return result;
     }
