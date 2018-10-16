@@ -42,7 +42,6 @@ public class Watchdog {
 
     @Scheduled(initialDelayString = "${yfs.store.watchdog.initial_delay}", fixedDelayString = "${yfs.store.watchdog.fixed_delay}")
     public void watchFile() {
-        logger.debug("watchdog**************************file");
         Collection<Versioned<FileMetadata>> metadata = YfsConfig.fileMetadataMap.values();
         metadata.parallelStream().forEach(fileMetadataVersioned -> {
             FileMetadata fileMetadata = fileMetadataVersioned.value();
@@ -59,7 +58,6 @@ public class Watchdog {
 
     @Scheduled(fixedRate = 5000)
     public void watchServer() {
-        logger.debug("watchdog**************************server");
         StringBuilder fileDir = new StringBuilder();
         if (!clusterProperties.getStore().getFiledata().getDir().startsWith("/")) {
             fileDir.append(FileUtils.getUserDirectoryPath()).append("/");

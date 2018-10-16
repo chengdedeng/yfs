@@ -43,7 +43,6 @@ public class Watchdog implements Runnable {
         while (true) {
             try {
                 Thread.sleep(1000 * 5);
-                logger.debug("watchdog**************************start");
                 ClusterMembershipService membershipService = clusterConfig.atomix.getMembershipService();
                 membershipService.getMembers().stream().forEach(member -> {
                     if (!member.isReachable()) {
@@ -55,7 +54,7 @@ public class Watchdog implements Runnable {
             } catch (Exception e) {
                 logger.error("watchdog error", e);
             }
-            logger.debug("watchdog****************************end");
+            logger.debug("store****************************watchdog");
         }
     }
 
