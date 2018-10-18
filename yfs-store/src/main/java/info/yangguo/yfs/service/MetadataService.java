@@ -24,44 +24,28 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
 public class MetadataService {
-    public static boolean create(ClusterProperties clusterProperties, FileMetadata fileMetadata, int qos) throws InterruptedException {
+    public static boolean create(ClusterProperties clusterProperties, YfsConfig yfsConfig, FileMetadata fileMetadata, int qos) throws InterruptedException {
         boolean result = false;
         fileMetadata.getAddNodes().add(clusterProperties.getLocal());
         CountDownLatch countDownLatch = new CountDownLatch(qos);
-        YfsConfig.cache.put(getKey(fileMetadata), countDownLatch);
-        YfsConfig.fileMetadataMap.put(getKey(fileMetadata), fileMetadata);
+        yfsConfig.cache.put(fileMetadata.getPath(), countDownLatch);
+        yfsConfig.fileMetadataMap.put(fileMetadata.getPath(), fileMetadata);
         //Preventing network traffic from failing
         countDownLatch.countDown();
         result = countDownLatch.await(clusterProperties.getStore().getQos_max_time(), TimeUnit.SECONDS);
-        YfsConfig.cache.invalidate(getKey(fileMetadata));
+        yfsConfig.cache.invalidate(fileMetadata.getPath());
         return result;
     }
 
-    public static boolean softDelete(ClusterProperties clusterProperties, FileMetadata fileMetadata) {
+    public static boolean softDelete(ClusterProperties clusterProperties, YfsConfig yfsConfig, FileMetadata fileMetadata) {
         boolean result = false;
-        Versioned<FileMetadata> tmp = YfsConfig.fileMetadataMap.get(getKey(fileMetadata));
+        Versioned<FileMetadata> tmp = yfsConfig.fileMetadataMap.get(fileMetadata.getPath());
         if (tmp != null) {
             long version = tmp.version();
             fileMetadata = tmp.value();
             fileMetadata.getRemoveNodes().add(clusterProperties.getLocal());
-            result = YfsConfig.fileMetadataMap.replace(getKey(fileMetadata), version, fileMetadata);
+            result = yfsConfig.fileMetadataMap.replace(fileMetadata.getPath(), version, fileMetadata);
         }
         return result;
-    }
-
-
-    public static String getKey(String group, Integer partition, String name) {
-        StringBuilder stringBuilder = new StringBuilder();
-        stringBuilder
-                .append(group)
-                .append("/")
-                .append(partition)
-                .append("/")
-                .append(name);
-        return stringBuilder.toString();
-    }
-
-    public static String getKey(FileMetadata fileMetadata) {
-        return getKey(fileMetadata.getGroup(), fileMetadata.getPartition(), fileMetadata.getName());
     }
 }

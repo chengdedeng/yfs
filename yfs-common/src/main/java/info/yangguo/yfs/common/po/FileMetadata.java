@@ -22,16 +22,43 @@ import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
+import java.util.Map;
 
 @Getter
 @Setter
 public class FileMetadata implements Serializable {
+    /**
+     * file original name
+     */
     private String name;
+    /**
+     * file mime type
+     */
+    private String type;
+    /**
+     * file size
+     */
     private long size;
-    private String group;
-    private int partition;
-    private Date createTime;
-    private long checkSum;
+    /**
+     * store path
+     */
+    private String path;
+    /**
+     * create time
+     */
+    private Date time;
+    /**
+     * hash by md5
+     */
+    private String md5;
+    /**
+     * checksum by crc32
+     */
+    private Long crc32;
+    /**
+     * extension metadata by user
+     */
+    private Map<String, String> metadata;
     private List<String> addNodes = new ArrayList<>();
     private List<String> removeNodes = new ArrayList<>();
 }

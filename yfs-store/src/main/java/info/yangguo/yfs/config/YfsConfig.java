@@ -24,7 +24,6 @@ import info.yangguo.yfs.common.po.FileMetadata;
 import info.yangguo.yfs.common.po.StoreInfo;
 import info.yangguo.yfs.common.utils.JsonUtil;
 import info.yangguo.yfs.service.FileService;
-import info.yangguo.yfs.service.MetadataService;
 import io.atomix.cluster.Member;
 import io.atomix.cluster.discovery.BootstrapDiscoveryProvider;
 import io.atomix.core.Atomix;
@@ -52,56 +51,26 @@ import org.apache.http.impl.conn.PoolingHttpClientConnectionManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Configuration;
+import org.springframework.stereotype.Component;
 
 import java.io.File;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
-@Configuration
-@EnableConfigurationProperties({ClusterProperties.class})
+@Component
 public class YfsConfig {
     private static Logger logger = LoggerFactory.getLogger(YfsConfig.class);
-    private static final String fileMetadataMapName = "file-metadata";
-    public static AtomicMap<String, FileMetadata> fileMetadataMap = null;
-    public static AtomicMap<String, StoreInfo> storeInfoMap = null;
-    private static HttpClient httpClient;
-    public static Cache<String, CountDownLatch> cache;
-
-    static {
-        Registry<ConnectionSocketFactory> registry = RegistryBuilder.<ConnectionSocketFactory>create()
-                .register("http", PlainConnectionSocketFactory.getSocketFactory())
-                .build();
-        PoolingHttpClientConnectionManager connectionManager = new PoolingHttpClientConnectionManager(registry);
-        connectionManager.setMaxTotal(1000);
-        connectionManager.setDefaultMaxPerRoute(1000);
-
-        RequestConfig requestConfig = RequestConfig.custom()
-                .build();
-
-        httpClient = HttpClientBuilder.create()
-                .setDefaultRequestConfig(requestConfig)
-                .setConnectionManager(connectionManager)
-                .build();
-
-        cache = CacheBuilder.newBuilder()
-                .maximumSize(1000)
-                .expireAfterWrite(300, TimeUnit.SECONDS)
-                .removalListener(new RemovalListener() {
-                    @Override
-                    public void onRemoval(RemovalNotification notification) {
-                        logger.debug("key:{} remove from cache", notification.getKey());
-                    }
-                })
-                .build();
-    }
+    public AtomicMap<String, FileMetadata> fileMetadataMap = null;
+    public AtomicMap<String, StoreInfo> storeInfoMap = null;
+    private HttpClient httpClient;
+    public Cache<String, CountDownLatch> cache;
+    @Autowired
+    private ClusterProperties clusterProperties;
 
     private final Function<ClusterProperties, Map<String, ClusterProperties.ClusterNode>> storeNodeMap = properties -> properties.getStore().getNode().stream().collect(Collectors.toMap(node -> node.getId(), node -> node));
     private final Function<ClusterProperties, Map<String, ClusterProperties.ClusterNode>> gatewayNodeMap = properties -> properties.getGateway().getNode().stream().collect(Collectors.toMap(node -> node.getId(), node -> node));
@@ -137,16 +106,16 @@ public class YfsConfig {
     private final Function<ClusterProperties, ManagedPartitionGroup> storeManagementGroup = properties -> {
         List<Member> ms = storeMembers.apply(properties);
         String metadataDir = null;
-        if (properties.getStore().getMetadata().getDir().startsWith("/")) {
-            metadataDir = String.format(properties.getStore().getMetadata().getDir() + "/%s", properties.getLocal());
+        if (properties.getStore().getMetadata().getDir().startsWith(File.separator)) {
+            metadataDir = String.format(properties.getStore().getMetadata().getDir() + File.separator + "%s", properties.getLocal());
         } else {
-            metadataDir = FileUtils.getUserDirectoryPath() + "/" + String.format(properties.getStore().getMetadata().getDir() + "/%s", properties.getLocal());
+            metadataDir = FileUtils.getUserDirectoryPath() + File.separator + String.format(properties.getStore().getMetadata().getDir() + File.separator + "%s", properties.getLocal());
         }
         ManagedPartitionGroup managementGroup = RaftPartitionGroup.builder("system")
                 .withMembers(ms.stream().map(m -> m.id().id()).collect(Collectors.toSet()))
                 .withNumPartitions(1)
                 .withPartitionSize(ms.size())
-                .withDataDirectory(new File(metadataDir + "/systme"))
+                .withDataDirectory(new File(metadataDir + File.separator + "systme"))
                 .build();
 
 
@@ -157,10 +126,10 @@ public class YfsConfig {
         List<Member> ms = storeMembers.apply(clusterProperties);
 
         String metadataDir = null;
-        if (clusterProperties.getStore().getMetadata().getDir().startsWith("/")) {
-            metadataDir = String.format(clusterProperties.getStore().getMetadata().getDir() + "/%s", clusterProperties.getLocal());
+        if (clusterProperties.getStore().getMetadata().getDir().startsWith(File.separator)) {
+            metadataDir = String.format(clusterProperties.getStore().getMetadata().getDir() + File.separator + "%s", clusterProperties.getLocal());
         } else {
-            metadataDir = FileUtils.getUserDirectoryPath() + "/" + String.format(clusterProperties.getStore().getMetadata().getDir() + "/%s", clusterProperties.getLocal());
+            metadataDir = FileUtils.getUserDirectoryPath() + File.separator + String.format(clusterProperties.getStore().getMetadata().getDir() + File.separator + "%s", clusterProperties.getLocal());
         }
 
         ManagedPartitionGroup dataGroup = RaftPartitionGroup.builder("data")
@@ -169,14 +138,38 @@ public class YfsConfig {
                 .withPartitionSize(3)
                 .withStorageLevel(StorageLevel.DISK)
                 .withFlushOnCommit(false)
-                .withDataDirectory(new File(metadataDir + "/data"))
+                .withDataDirectory(new File(metadataDir + File.separator + "data"))
                 .build();
 
         return dataGroup;
     };
 
-    @Autowired
-    private ClusterProperties clusterProperties;
+    public YfsConfig() {
+        Registry<ConnectionSocketFactory> registry = RegistryBuilder.<ConnectionSocketFactory>create()
+                .register("http", PlainConnectionSocketFactory.getSocketFactory())
+                .build();
+        PoolingHttpClientConnectionManager connectionManager = new PoolingHttpClientConnectionManager(registry);
+        connectionManager.setMaxTotal(1000);
+        connectionManager.setDefaultMaxPerRoute(1000);
+
+        RequestConfig requestConfig = RequestConfig.custom()
+                .build();
+
+        this.httpClient = HttpClientBuilder.create()
+                .setDefaultRequestConfig(requestConfig)
+                .setConnectionManager(connectionManager)
+                .build();
+
+        this.cache = CacheBuilder.newBuilder()
+                .maximumSize(100000)
+                .removalListener(new RemovalListener() {
+                    @Override
+                    public void onRemoval(RemovalNotification notification) {
+                        logger.debug("key:{} remove from cache", notification.getKey());
+                    }
+                })
+                .build();
+    }
 
     @Bean(name = "storeAtomix")
     public Atomix getStoreAtomix() {
@@ -192,7 +185,7 @@ public class YfsConfig {
                 .withPartitionGroups(storeDataGroup.apply(clusterProperties))
                 .build();
         atomix.start().join();
-        fileMetadataMap = atomix.<String, FileMetadata>atomicMapBuilder(fileMetadataMapName)
+        fileMetadataMap = atomix.<String, FileMetadata>atomicMapBuilder(CommonConstant.fileMetadataMapName)
                 .withProtocol(MultiRaftProtocol.builder()
                         .withReadConsistency(ReadConsistency.LINEARIZABLE)
                         .build())
@@ -207,10 +200,8 @@ public class YfsConfig {
                         logger.info("{} Event Info:\n{}",
                                 MapEvent.Type.INSERT.name(),
                                 JsonUtil.toJson(fileMetadata1, true));
-                        long checkSum = syncFile(clusterProperties, fileMetadata1.getAddNodes(), fileMetadata1);
-                        if (fileMetadata1.getCheckSum() == checkSum) {
-                            updateAddNodes(clusterProperties, MetadataService.getKey(fileMetadata1), MapEvent.Type.INSERT.name());
-                        }
+                        syncFile(clusterProperties, fileMetadata1.getAddNodes(), fileMetadata1);
+                        updateAddNodes(clusterProperties, fileMetadata1.getPath(), MapEvent.Type.INSERT.name());
                     }
                 case UPDATE:
                     Versioned<FileMetadata> tmp2 = event.newValue();
@@ -225,27 +216,25 @@ public class YfsConfig {
                                 MapEvent.Type.UPDATE.name(),
                                 JsonUtil.toJson(fileMetadata3, true),
                                 JsonUtil.toJson(fileMetadata2, true));
-                        if (fileMetadata2.getCheckSum() != FileService.checkFile(clusterProperties, fileMetadata2)) {
-                            long checkSum = syncFile(clusterProperties, addNodes, fileMetadata2);
-                            if (fileMetadata2.getCheckSum() == checkSum) {
-                                updateAddNodes(clusterProperties, MetadataService.getKey(fileMetadata2), MapEvent.Type.UPDATE.name());
-                            }
-                        } else {
-                            updateAddNodes(clusterProperties, MetadataService.getKey(fileMetadata2), MapEvent.Type.UPDATE.name());
-                        }
+                        syncFile(clusterProperties, addNodes, fileMetadata2);
+                        updateAddNodes(clusterProperties, fileMetadata2.getPath(), MapEvent.Type.UPDATE.name());
                     } else if (removeNodes.size() > 0 && !removeNodes.contains(clusterProperties.getLocal())) {
                         FileMetadata fileMetadata3 = tmp3.value();
                         logger.info("{} Event Info:\nOldValue:{}\nNewValue:{}",
                                 MapEvent.Type.UPDATE.name(),
                                 JsonUtil.toJson(fileMetadata3, true),
                                 JsonUtil.toJson(fileMetadata2, true));
-                        String key = MetadataService.getKey(fileMetadata2);
                         FileService.delete(clusterProperties, fileMetadata2);
-                        updateRemoveNodes(clusterProperties, key);
+                        updateRemoveNodes(clusterProperties, fileMetadata2.getPath());
                     }
-
+                    //为了实现QOS，yfs使用CountDownLatch来实现上传节点的有限时间阻塞，由yfs.store.qos_max_time配置决定。
+                    //上传节点在上传之前会创建一个CountDownLatch放入到本地缓存，文件上传完成之后，上传节点自身会发布update event信息；
+                    //同步节点会收到update event，然后同步文件，同步完成之后，也会发布update event；由于event是一个broadcast event，
+                    //所以只有上传节点才需要处理latch，由于上传节点是addNodes中的第一个节点，所以便有下面的逻辑。
+                    //特别注意新增节点为了防止网络导致的通知不可达，所以新增节点latch.countDown在写入元数据的时候就已经减一了，所以需要
+                    //addNodes.size>1
                     if (removeNodes.size() == 0 && addNodes.size() > 1 && clusterProperties.getLocal().equals(addNodes.get(0))) {
-                        CountDownLatch latch = cache.getIfPresent(MetadataService.getKey(fileMetadata2));
+                        CountDownLatch latch = cache.getIfPresent(fileMetadata2.getPath());
                         if (latch != null) {
                             latch.countDown();
                         }
@@ -260,7 +249,7 @@ public class YfsConfig {
         List<Member> ms = gatewayMembers.apply(clusterProperties);
         Atomix atomix = Atomix.builder()
                 .withMemberId(clusterProperties.getLocal())
-                .withAddress(clusterProperties.getGateway().getIp(),clusterProperties.getGateway().getPort())
+                .withAddress(clusterProperties.getGateway().getIp(), clusterProperties.getGateway().getPort())
                 .withMembershipProvider(BootstrapDiscoveryProvider.builder()
                         .withNodes((Collection) ms)
                         .build())
@@ -278,17 +267,16 @@ public class YfsConfig {
     }
 
 
-    private long syncFile(ClusterProperties clusterProperties, List<String> addNodes, FileMetadata fileMetadata) {
-        long checkSum = 0L;
+    private void syncFile(ClusterProperties clusterProperties, List<String> addNodes, FileMetadata fileMetadata) {
         for (String addNode : addNodes) {
             ClusterProperties.ClusterNode clusterNode = storeNodeMap.apply(clusterProperties).get(addNode);
-            String url = "http://" + clusterNode.getIp() + ":" + clusterNode.getHttp_port() + "/" + MetadataService.getKey(fileMetadata);
+            String url = "http://" + clusterNode.getIp() + ":" + clusterNode.getHttp_port() + "/" + fileMetadata.getPath();
             HttpUriRequest httpUriRequest = new HttpGet(url);
-            String id = MetadataService.getKey(fileMetadata);
+            String id = fileMetadata.getPath();
             try {
                 HttpResponse response = httpClient.execute(httpUriRequest);
                 if (200 == response.getStatusLine().getStatusCode()) {
-                    checkSum = FileService.store(clusterProperties, fileMetadata, response);
+                    FileService.store(clusterProperties, fileMetadata, response);
                     logger.info("Sync Success:{}", id);
                     break;
                 }
@@ -296,10 +284,9 @@ public class YfsConfig {
                 logger.warn("Sync Failure:{}", id, e);
             }
         }
-        return checkSum;
     }
 
-    private static boolean updateAddNodes(ClusterProperties clusterProperties, String key, String eventType) {
+    private boolean updateAddNodes(ClusterProperties clusterProperties, String key, String eventType) {
         boolean result = false;
         FileMetadata fileMetadata = null;
         try {
@@ -320,7 +307,7 @@ public class YfsConfig {
         return result;
     }
 
-    private static boolean updateRemoveNodes(ClusterProperties clusterProperties, String key) {
+    private boolean updateRemoveNodes(ClusterProperties clusterProperties, String key) {
         boolean result = false;
         FileMetadata fileMetadata = null;
         try {

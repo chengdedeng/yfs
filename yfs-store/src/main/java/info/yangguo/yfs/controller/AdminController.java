@@ -20,7 +20,6 @@ import info.yangguo.yfs.config.ClusterProperties;
 import info.yangguo.yfs.config.YfsConfig;
 import info.yangguo.yfs.dto.Result;
 import info.yangguo.yfs.dto.ResultCode;
-import info.yangguo.yfs.service.MetadataService;
 import io.atomix.utils.time.Versioned;
 import io.swagger.annotations.ApiOperation;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -31,6 +30,7 @@ import org.springframework.web.bind.annotation.RequestMethod;
 import org.springframework.web.bind.annotation.ResponseBody;
 
 import javax.servlet.http.HttpServletResponse;
+import java.io.File;
 import java.util.HashSet;
 
 @Controller
@@ -38,6 +38,8 @@ import java.util.HashSet;
 public class AdminController extends BaseController {
     @Autowired
     private ClusterProperties clusterProperties;
+    @Autowired
+    private YfsConfig yfsConfig;
 
     @ApiOperation(value = "node sync full file")
     @RequestMapping(value = "resync/{node}", method = {RequestMethod.PATCH})
@@ -46,16 +48,16 @@ public class AdminController extends BaseController {
         Result result = new Result<>();
         HashSet<String> anomalyFile = new HashSet<>();
         try {
-            YfsConfig.fileMetadataMap.values().stream().forEach(fileMetadataVersioned -> {
+            yfsConfig.fileMetadataMap.values().stream().forEach(fileMetadataVersioned -> {
                 long version = fileMetadataVersioned.version();
                 FileMetadata fileMetadata = fileMetadataVersioned.value();
                 fileMetadata.getAddNodes().remove(node);
                 try {
-                    if (false == YfsConfig.fileMetadataMap.replace(MetadataService.getKey(fileMetadata), version, fileMetadata)) {
-                        anomalyFile.add(MetadataService.getKey(fileMetadata));
+                    if (false == yfsConfig.fileMetadataMap.replace(fileMetadata.getPath(), version, fileMetadata)) {
+                        anomalyFile.add(fileMetadata.getPath());
                     }
                 } catch (Exception e) {
-                    anomalyFile.add(MetadataService.getKey(fileMetadata));
+                    anomalyFile.add(fileMetadata.getPath());
                 }
             });
             if (anomalyFile.size() == 0) {
@@ -72,19 +74,21 @@ public class AdminController extends BaseController {
     }
 
     @ApiOperation(value = "node sync one file")
-    @RequestMapping(value = "resync/{node}/{partition}/{name:.+}", method = {RequestMethod.PUT})
-    public void resyncFile(@PathVariable String node, @PathVariable Integer partition, @PathVariable String name, HttpServletResponse response) {
+    @RequestMapping(value = "resync/{node}/{first}/{second}/{name:.+}", method = {RequestMethod.PUT})
+    public void resyncFile(@PathVariable String node, @PathVariable String first, @PathVariable String second, @PathVariable String name, HttpServletResponse response) {
         Result result = new Result<>();
         try {
-            String key = MetadataService.getKey(clusterProperties.getGroup(), partition, name);
-            Versioned<FileMetadata> versioned = YfsConfig.fileMetadataMap.get(key);
-            long version = versioned.version();
-            FileMetadata fileMetadata = versioned.value();
-            fileMetadata.getAddNodes().remove(node);
-            if (false == YfsConfig.fileMetadataMap.replace(key, version, fileMetadata)) {
-                result.setCode(ResultCode.C202.getCode());
-            } else {
-                result.setCode(ResultCode.C200.getCode());
+            String path = clusterProperties.getGroup() + File.separator + first + File.separator + second + File.separator + name;
+            Versioned<FileMetadata> versioned = yfsConfig.fileMetadataMap.get(path);
+            if (versioned != null) {
+                long version = versioned.version();
+                FileMetadata fileMetadata = versioned.value();
+                fileMetadata.getAddNodes().remove(node);
+                if (false == yfsConfig.fileMetadataMap.replace(path, version, fileMetadata)) {
+                    result.setCode(ResultCode.C202.getCode());
+                } else {
+                    result.setCode(ResultCode.C200.getCode());
+                }
             }
         } catch (Exception e) {
             result.setCode(ResultCode.C500.getCode());

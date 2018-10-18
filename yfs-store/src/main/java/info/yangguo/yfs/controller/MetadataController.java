@@ -22,7 +22,6 @@ import info.yangguo.yfs.config.ClusterProperties;
 import info.yangguo.yfs.config.YfsConfig;
 import info.yangguo.yfs.dto.Result;
 import info.yangguo.yfs.dto.ResultCode;
-import info.yangguo.yfs.service.MetadataService;
 import io.atomix.core.iterator.SyncIterator;
 import io.atomix.core.map.AtomicMap;
 import io.atomix.utils.time.Versioned;
@@ -30,7 +29,6 @@ import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.ApiParam;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Controller;
-import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestMethod;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -44,6 +42,8 @@ import java.util.Map;
 public class MetadataController extends BaseController {
     @Autowired
     private ClusterProperties clusterProperties;
+    @Autowired
+    private YfsConfig yfsConfig;
 
     @ApiOperation(value = "get all file metadata by paging query")
     @RequestMapping(value = "file", method = {RequestMethod.GET})
@@ -51,7 +51,7 @@ public class MetadataController extends BaseController {
         Result result = new Result<>();
         Map<String, Object> values = Maps.newHashMap();
         try {
-            AtomicMap<String, FileMetadata> atomicMap = YfsConfig.fileMetadataMap;
+            AtomicMap<String, FileMetadata> atomicMap = yfsConfig.fileMetadataMap;
             values.put("count", atomicMap.size());
             values.put("page", page);
             values.put("pageSize", pageSize);
@@ -82,19 +82,18 @@ public class MetadataController extends BaseController {
         outputResult(response, result);
     }
 
-    @ApiOperation(value = "get metadata for one file")
-    @RequestMapping(value = "file/{partition}/{name:.+}", method = {RequestMethod.GET})
-    public void getOneFileMetadata(@PathVariable Integer partition, @PathVariable String name, HttpServletResponse response) {
-        Result result = new Result<>();
-        try {
-            String key = MetadataService.getKey(clusterProperties.getGroup(), partition, name);
-            FileMetadata metadata = YfsConfig.fileMetadataMap.get(key).value();
-            result.setValue(metadata);
-            result.setCode(ResultCode.C200.getCode());
-        } catch (Exception e) {
-            result.setCode(ResultCode.C500.getCode());
-            result.setValue(ResultCode.C500.getDesc());
-        }
-        outputResult(response, result);
-    }
+//    @ApiOperation(value = "get metadata for one file")
+//    @RequestMapping(value = "file/{partition}//{name:.+}", method = {RequestMethod.GET})
+//    public void getOneFileMetadata(@PathVariable Integer partition, @PathVariable String name, HttpServletResponse response) {
+//        Result result = new Result<>();
+//        try {
+//            FileMetadata metadata = YfsConfig.fileMetadataMap.get(key).value();
+//            result.setValue(metadata);
+//            result.setCode(ResultCode.C200.getCode());
+//        } catch (Exception e) {
+//            result.setCode(ResultCode.C500.getCode());
+//            result.setValue(ResultCode.C500.getDesc());
+//        }
+//        outputResult(response, result);
+//    }
 }

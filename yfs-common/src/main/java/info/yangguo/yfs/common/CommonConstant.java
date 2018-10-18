@@ -23,9 +23,13 @@ import io.atomix.utils.serializer.Serializer;
 
 import java.util.ArrayList;
 import java.util.Date;
+import java.util.HashMap;
+import java.util.Map;
 
 public class CommonConstant {
+    public static final String fileMetadataMapName = "file-metadata";
     public static final String storeInfoMapName = "store-info";
+    public static final String xHeaderPrefix = "x-yfs-";
 
     public static final Serializer protocolSerializer = Serializer.using(Namespace.builder()
             .register(ArrayList.class)
@@ -33,6 +37,8 @@ public class CommonConstant {
             .register(StoreInfo.class)
             .register(FileMetadata.class)
             .register(ServerMetadata.class)
+            .register(Map.class)
+            .register(HashMap.class)
             .build());
 
     /**
