@@ -16,18 +16,20 @@
 package info.yangguo.yfs.config;
 
 import com.google.common.collect.Lists;
+import com.google.common.collect.Maps;
 import info.yangguo.yfs.HostResolverImpl;
 import info.yangguo.yfs.common.CommonConstant;
 import info.yangguo.yfs.common.po.StoreInfo;
 import info.yangguo.yfs.common.utils.JsonUtil;
 import info.yangguo.yfs.util.WeightedRoundRobinScheduling;
 import io.atomix.cluster.ClusterMembershipService;
+import io.atomix.cluster.Member;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 
 public class Watchdog implements Runnable {
@@ -42,12 +44,27 @@ public class Watchdog implements Runnable {
     public void run() {
         while (true) {
             try {
-                Thread.sleep(1000 * 5);
+                Thread.sleep(clusterConfig.clusterProperties.detectionCycle * 1000);
                 ClusterMembershipService membershipService = clusterConfig.atomix.getMembershipService();
+                List<Member> healthMembers = Lists.newArrayList();
                 membershipService.getMembers().stream().forEach(member -> {
-                    if (!member.isReachable()) {
-                        removeStoreBySocketPort(member.address().host(), member.address().port());
-                        logger.error("nodeId:{},ip:{},port:{}", member.id(), member.address().host(), member.address().port());
+                    if (member.isActive() && member.isReachable() && CommonConstant.storeZone.equals(member.zone())) {
+                        healthMembers.add(member);
+                    }
+                });
+                clusterConfig.atomicMap.entrySet().forEach(entry -> {
+                    StoreInfo storeInfo = entry.getValue().value();
+                    boolean isHealth = false;
+                    for (Member member : healthMembers) {
+                        if (storeInfo.getGroup().equals(member.config().getRack())
+                                && storeInfo.getNodeId().equals(member.id().id())) {
+                            isHealth = true;
+                            break;
+                        }
+                    }
+                    if (!isHealth) {
+                        logger.warn("store:{}下线", JsonUtil.toJson(storeInfo, false));
+                        removeStoreBySocketPort(storeInfo.getIp(), storeInfo.getStoreSocketPort());
                     }
                 });
                 updateDownload();
@@ -62,36 +79,38 @@ public class Watchdog implements Runnable {
      * 更新下载节点
      */
     public void updateDownload() {
+        Map<String, WeightedRoundRobinScheduling> newDownloadServers = Maps.newHashMap();
         clusterConfig.atomicMap.entrySet().stream().forEach(entry -> {
             StoreInfo storeInfo = entry.getValue().value();
             String group = storeInfo.getGroup();
-            if (!HostResolverImpl.downloadServers.containsKey(group)) {
-                HostResolverImpl.downloadServers.put(group, new WeightedRoundRobinScheduling());
-            }
-            WeightedRoundRobinScheduling weightedRoundRobinScheduling = HostResolverImpl.downloadServers.get(group);
-            AtomicBoolean isFind = new AtomicBoolean(false);
-            for (WeightedRoundRobinScheduling.Server server : weightedRoundRobinScheduling.healthilyServers) {
-                if (server.getStoreInfo().getNodeId().equals(storeInfo.getNodeId())) {
-                    isFind.set(true);
-                    break;
-                }
-            }
-            if (!isFind.get()) {
-                WeightedRoundRobinScheduling.Server server = new WeightedRoundRobinScheduling.Server(storeInfo, 1);
+            WeightedRoundRobinScheduling.Server server = new WeightedRoundRobinScheduling.Server(storeInfo, 1);
+            if (newDownloadServers.containsKey(group)) {
+                newDownloadServers.get(group).healthilyServers.add(server);
+            } else {
+                WeightedRoundRobinScheduling weightedRoundRobinScheduling = new WeightedRoundRobinScheduling();
                 weightedRoundRobinScheduling.healthilyServers.add(server);
+                newDownloadServers.put(group, weightedRoundRobinScheduling);
             }
         });
+        HostResolverImpl.getSingleton(clusterConfig).getDownloadServers().putAll(newDownloadServers);
+        Iterator<Map.Entry<String, WeightedRoundRobinScheduling>> iterator = HostResolverImpl.getSingleton(clusterConfig).getDownloadServers().entrySet().iterator();
+        while (iterator.hasNext()) {
+            Map.Entry<String, WeightedRoundRobinScheduling> entry = iterator.next();
+            if (!newDownloadServers.containsKey(entry.getKey())) {
+                iterator.remove();
+            }
+        }
         updateUpload();
     }
 
     /**
-     * 通过IP和StoreHttpPort端口删除store节点，ip+port能够确认唯一的store节点，并且一个store只能属于一个group
+     * 通过IP和StoreHttpPort端口删除store节点，ip+port能够确认唯一的store节点，并且一个store只能属于一个group。
      *
      * @param ip
      * @param storeHttpPort
      */
     public void removeStoreByHttpPort(String ip, int storeHttpPort) {
-        for (Map.Entry<String, WeightedRoundRobinScheduling> weightedRoundRobinSchedulingEntry : HostResolverImpl.downloadServers.entrySet()) {
+        for (Map.Entry<String, WeightedRoundRobinScheduling> weightedRoundRobinSchedulingEntry : HostResolverImpl.getSingleton(clusterConfig).getDownloadServers().entrySet()) {
             for (WeightedRoundRobinScheduling.Server server : weightedRoundRobinSchedulingEntry.getValue().healthilyServers) {
                 if (server.getStoreInfo().getIp().equals(ip) && server.getStoreInfo().getStoreHttpPort() == storeHttpPort) {
                     clusterConfig.atomicMap.remove(CommonConstant.storeInfoConsistentMapKey(server.getStoreInfo().getGroup(), server.getStoreInfo().getIp(), server.getStoreInfo().getStoreHttpPort()));
@@ -105,15 +124,15 @@ public class Watchdog implements Runnable {
     }
 
     /**
-     * 通过IP和GatwaySocketPort端口删除store节点，ip+port能够确认唯一的store节点，并且一个store只能属于一个group
+     * 通过IP和StoreSocketPort端口删除store节点，ip+port能够确认唯一的store节点，并且一个store只能属于一个group。
      *
      * @param ip
-     * @param gatwaySocketPort
+     * @param storeSocketPort
      */
-    public void removeStoreBySocketPort(String ip, int gatwaySocketPort) {
-        for (Map.Entry<String, WeightedRoundRobinScheduling> weightedRoundRobinSchedulingEntry : HostResolverImpl.downloadServers.entrySet()) {
+    public void removeStoreBySocketPort(String ip, int storeSocketPort) {
+        for (Map.Entry<String, WeightedRoundRobinScheduling> weightedRoundRobinSchedulingEntry : HostResolverImpl.getSingleton(clusterConfig).getDownloadServers().entrySet()) {
             for (WeightedRoundRobinScheduling.Server server : weightedRoundRobinSchedulingEntry.getValue().healthilyServers) {
-                if (server.getStoreInfo().getIp().equals(ip) && server.getStoreInfo().getGatewaySocketPort() == gatwaySocketPort) {
+                if (server.getStoreInfo().getIp().equals(ip) && server.getStoreInfo().getStoreSocketPort() == storeSocketPort) {
                     clusterConfig.atomicMap.remove(CommonConstant.storeInfoConsistentMapKey(server.getStoreInfo().getGroup(), server.getStoreInfo().getIp(), server.getStoreInfo().getStoreHttpPort()));
                     weightedRoundRobinSchedulingEntry.getValue().healthilyServers.remove(server);
                     updateUpload();
@@ -129,7 +148,7 @@ public class Watchdog implements Runnable {
      */
     private void updateUpload() {
         List<WeightedRoundRobinScheduling.Server> uploadServers = Lists.newArrayList();
-        HostResolverImpl.downloadServers.entrySet().stream().forEach(entry -> {
+        HostResolverImpl.getSingleton(clusterConfig).getDownloadServers().entrySet().stream().forEach(entry -> {
             //上传的时候，每个group服务器的数量最少得是两台
             if (entry.getValue().healthilyServers.size() > 1) {
                 AtomicLong minStoreSpace = new AtomicLong();
@@ -146,14 +165,14 @@ public class Watchdog implements Runnable {
                     try {
                         WeightedRoundRobinScheduling.Server tmp = (WeightedRoundRobinScheduling.Server) server.clone();
                         tmp.setWeight(weight.intValue());
-                        uploadServers.add(server);
+                        uploadServers.add(tmp);
                     } catch (CloneNotSupportedException e) {
                         new RuntimeException(e);
                     }
                 });
             }
         });
-        HostResolverImpl.uploadServers.healthilyServers = uploadServers;
+        HostResolverImpl.getSingleton(clusterConfig).getUploadServers().healthilyServers = uploadServers;
         logger.debug("update servers of upload");
     }
 }

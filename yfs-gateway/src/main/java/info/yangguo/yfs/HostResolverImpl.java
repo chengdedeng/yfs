@@ -15,10 +15,11 @@
  */
 package info.yangguo.yfs;
 
+import info.yangguo.yfs.config.ClusterConfig;
 import info.yangguo.yfs.util.WeightedRoundRobinScheduling;
+import lombok.Getter;
+import lombok.Setter;
 import org.littleshoot.proxy.HostResolver;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import java.net.InetSocketAddress;
 import java.net.UnknownHostException;
@@ -33,19 +34,26 @@ import java.util.concurrent.ConcurrentHashMap;
  * Description:
  */
 public class HostResolverImpl implements HostResolver {
-    private static Logger logger = LoggerFactory.getLogger(HostResolverImpl.class);
     private volatile static HostResolverImpl singleton;
-    public static final WeightedRoundRobinScheduling uploadServers = new WeightedRoundRobinScheduling();
-    public static final Map<String, WeightedRoundRobinScheduling> downloadServers = new ConcurrentHashMap<>();
+    private ClusterConfig clusterConfig;
+    @Getter
+    @Setter
+    private WeightedRoundRobinScheduling uploadServers;
+    @Getter
+    @Setter
+    private Map<String, WeightedRoundRobinScheduling> downloadServers;
 
-    private HostResolverImpl() {
+    private HostResolverImpl(ClusterConfig clusterConfig) {
+        this.clusterConfig = clusterConfig;
+        this.uploadServers = new WeightedRoundRobinScheduling();
+        this.downloadServers = new ConcurrentHashMap<>();
     }
 
-    public static HostResolverImpl getSingleton() {
+    public static HostResolverImpl getSingleton(ClusterConfig clusterConfig) {
         if (singleton == null) {
             synchronized (HostResolverImpl.class) {
                 if (singleton == null) {
-                    singleton = new HostResolverImpl();
+                    singleton = new HostResolverImpl(clusterConfig);
                 }
             }
         }
@@ -55,12 +63,13 @@ public class HostResolverImpl implements HostResolver {
     @Override
     public InetSocketAddress resolve(String host, int port)
             throws UnknownHostException {
-        String[] items = host.split("\\.");
         WeightedRoundRobinScheduling.Server server = null;
-        if (items.length == 2) {
+        //上传域名比下载域名长一段
+        //例如：上传域名为yfs.info，下载域名为group1.yfs.info。
+        if (host.equals(clusterConfig.clusterProperties.dn)) {
             server = uploadServers.getServer();
-        } else if (items.length == 3) {
-            WeightedRoundRobinScheduling weightedRoundRobinScheduling = downloadServers.get(items[0]);
+        } else if (host.endsWith(clusterConfig.clusterProperties.dn)) {
+            WeightedRoundRobinScheduling weightedRoundRobinScheduling = downloadServers.get(host.split("\\.")[0]);
             server = weightedRoundRobinScheduling.getServer();
         }
         if (server != null) {

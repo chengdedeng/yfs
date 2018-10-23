@@ -28,8 +28,8 @@ public class StoreInfo {
     private int storeSocketPort;
     private int gatewaySocketPort;
     private long updateTime;
-    private Long metadataFreeSpaceKb;
-    private Long fileFreeSpaceKb;
+    private long metadataFreeSpaceKb;
+    private long fileFreeSpaceKb;
 
     private StoreInfo(){}
 

@@ -173,6 +173,7 @@ public class ClusterConfig {
                         .build())
                 .withManagementGroup(gatewayManagementGroup.apply(clusterProperties))
                 .withPartitionGroups(gatewayDataGroup.apply(clusterProperties))
+                .withZone(CommonConstant.gatewayZone)
                 .build();
         atomix.start().join();
         this.atomicMap = atomix.<String, StoreInfo>atomicMapBuilder(CommonConstant.storeInfoMapName)

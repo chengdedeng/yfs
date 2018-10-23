@@ -30,6 +30,8 @@ public class CommonConstant {
     public static final String fileMetadataMapName = "file-metadata";
     public static final String storeInfoMapName = "store-info";
     public static final String xHeaderPrefix = "x-yfs-";
+    public static final String gatewayZone = "gateway";
+    public static final String storeZone = "store";
 
     public static final Serializer protocolSerializer = Serializer.using(Namespace.builder()
             .register(ArrayList.class)

@@ -59,8 +59,8 @@ public class Watchdog {
     @Scheduled(fixedRate = 5000)
     public void watchServer() {
         StringBuilder fileDir = new StringBuilder();
-        if (!clusterProperties.getStore().getFiledata().getDir().startsWith("/")) {
-            fileDir.append(FileUtils.getUserDirectoryPath()).append("/");
+        if (!clusterProperties.getStore().getFiledata().getDir().startsWith(File.separator)) {
+            fileDir.append(FileUtils.getUserDirectoryPath()).append(File.separator);
         }
         String metadataDir = fileDir.toString() + clusterProperties.getStore().getMetadata().getDir();
         File metadataDirFile = new File(metadataDir);

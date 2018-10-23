@@ -38,7 +38,9 @@ public class Application {
         threadPoolConfiguration.withClientToProxyWorkerThreads(Constant.ClientToProxyWorkerThreads);
         threadPoolConfiguration.withProxyToServerWorkerThreads(Constant.ProxyToServerWorkerThreads);
 
-        Watchdog watchdog = new Watchdog((new ClusterConfig()));
+        ClusterConfig clusterConfig=new ClusterConfig();
+
+        Watchdog watchdog = new Watchdog(clusterConfig);
         Thread watchdogThread = new Thread(watchdog);
         watchdogThread.setDaemon(true);
         watchdogThread.start();
@@ -47,7 +49,7 @@ public class Application {
         HttpProxyServerBootstrap httpProxyServerBootstrap = DefaultHttpProxyServer.bootstrap()
                 .withAddress(inetSocketAddress);
         httpProxyServerBootstrap.withIdleConnectionTimeout(Integer.valueOf(Constant.IdleConnectionTimeout));
-        httpProxyServerBootstrap.withServerResolver(HostResolverImpl.getSingleton());
+        httpProxyServerBootstrap.withServerResolver(HostResolverImpl.getSingleton(clusterConfig));
         httpProxyServerBootstrap.withAllowRequestToOriginServer(true)
                 .withProxyAlias("yfs-gateway")
                 .withThreadPoolConfiguration(threadPoolConfiguration)

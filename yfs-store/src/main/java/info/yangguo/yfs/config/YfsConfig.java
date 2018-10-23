@@ -254,6 +254,8 @@ public class YfsConfig {
                         .withNodes((Collection) ms)
                         .build())
                 .withProfiles(Profile.client())
+                .withZone(CommonConstant.storeZone)
+                .withRack(clusterProperties.getGroup())
                 .build();
 
         atomix.start().join();
