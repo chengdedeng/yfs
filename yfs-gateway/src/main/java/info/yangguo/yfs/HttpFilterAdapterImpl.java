@@ -19,6 +19,7 @@ import info.yangguo.yfs.config.Watchdog;
 import info.yangguo.yfs.request.CCHttpRequestFilter;
 import info.yangguo.yfs.request.HttpRequestFilter;
 import info.yangguo.yfs.request.HttpRequestFilterChain;
+import info.yangguo.yfs.util.ResponseUtil;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelPipeline;
 import io.netty.handler.codec.http.*;
@@ -54,9 +55,9 @@ public class HttpFilterAdapterImpl extends HttpFiltersAdapter {
     private Watchdog watchdog;
 
 
-    public HttpFilterAdapterImpl(HttpRequest originalRequest, ChannelHandlerContext ctx,Watchdog watchdog) {
+    public HttpFilterAdapterImpl(HttpRequest originalRequest, ChannelHandlerContext ctx, Watchdog watchdog) {
         super(originalRequest, ctx);
-        this.watchdog=watchdog;
+        this.watchdog = watchdog;
     }
 
 
@@ -66,10 +67,10 @@ public class HttpFilterAdapterImpl extends HttpFiltersAdapter {
         try {
             ImmutablePair<Boolean, HttpRequestFilter> immutablePair = httpRequestFilterChain.doFilter(originalRequest, httpObject, ctx);
             if (immutablePair.left) {
-                httpResponse = createResponse(HttpResponseStatus.FORBIDDEN, originalRequest);
+                httpResponse = ResponseUtil.createResponse(HttpResponseStatus.FORBIDDEN, originalRequest, null);
             }
         } catch (Exception e) {
-            httpResponse = createResponse(HttpResponseStatus.BAD_GATEWAY, originalRequest);
+            httpResponse = ResponseUtil.createResponse(HttpResponseStatus.BAD_GATEWAY, originalRequest, null);
             logger.error("client's request failed", e.getCause());
         }
         return httpResponse;
@@ -81,7 +82,7 @@ public class HttpFilterAdapterImpl extends HttpFiltersAdapter {
         if (resolvedRemoteAddress == null) {
             //在使用 Channel 写数据之前，建议使用 isWritable() 方法来判断一下当前 ChannelOutboundBuffer 里的写缓存水位，防止 OOM 发生。不过实践下来，正常的通信过程不太会 OOM，但当网络环境不好，同时传输报文很大时，确实会出现限流的情况。
             if (ctx.channel().isWritable()) {
-                ctx.writeAndFlush(createResponse(HttpResponseStatus.BAD_GATEWAY, originalRequest));
+                ctx.writeAndFlush(ResponseUtil.createResponse(HttpResponseStatus.BAD_GATEWAY, originalRequest, null));
             }
         }
     }
@@ -129,20 +130,5 @@ public class HttpFilterAdapterImpl extends HttpFiltersAdapter {
                 }
             }
         });
-    }
-
-    private static HttpResponse createResponse(HttpResponseStatus httpResponseStatus, HttpRequest originalRequest) {
-        HttpHeaders httpHeaders = new DefaultHttpHeaders();
-        httpHeaders.add("Transfer-Encoding", "chunked");
-        HttpResponse httpResponse = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, httpResponseStatus);
-
-        //support CORS
-        List<String> originHeader = Constant.getHeaderValues(originalRequest, "Origin");
-        if (originHeader.size() > 0) {
-            httpHeaders.set("Access-Control-Allow-Credentials", "true");
-            httpHeaders.set("Access-Control-Allow-Origin", originHeader.get(0));
-        }
-        httpResponse.headers().add(httpHeaders);
-        return httpResponse;
     }
 }

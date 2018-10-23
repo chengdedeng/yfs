@@ -18,8 +18,8 @@ package info.yangguo.yfs.request;
 import com.google.common.cache.*;
 import com.google.common.util.concurrent.RateLimiter;
 import info.yangguo.yfs.Constant;
+import info.yangguo.yfs.util.GatewayHttpHeaderNames;
 import io.netty.channel.ChannelHandlerContext;
-import io.netty.handler.codec.http.DefaultHttpRequest;
 import io.netty.handler.codec.http.HttpObject;
 import io.netty.handler.codec.http.HttpRequest;
 import org.slf4j.Logger;
@@ -65,7 +65,7 @@ public class CCHttpRequestFilter extends HttpRequestFilter {
     public boolean doFilter(HttpRequest originalRequest, HttpObject httpObject, ChannelHandlerContext channelHandlerContext) {
         if (httpObject instanceof HttpRequest) {
             logger.debug("filter:{}", this.getClass().getName());
-            String realIp = Constant.getRealIp((DefaultHttpRequest) httpObject, channelHandlerContext);
+            String realIp = originalRequest.headers().get(GatewayHttpHeaderNames.X_REAL_IP);
             RateLimiter rateLimiter = null;
             try {
                 rateLimiter = (RateLimiter) loadingCache.get(realIp);
@@ -76,7 +76,7 @@ public class CCHttpRequestFilter extends HttpRequestFilter {
                 tl.set(false);
                 return false;
             } else {
-                hackLog(logger, Constant.getRealIp((DefaultHttpRequest) httpObject, channelHandlerContext), "cc", Constant.gatewayConfs.get("gateway.cc.rate"));
+                hackLog(logger, realIp, "cc", Constant.gatewayConfs.get("gateway.cc.rate"));
                 tl.set(true);
                 return true;
             }

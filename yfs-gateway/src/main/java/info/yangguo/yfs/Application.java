@@ -18,6 +18,7 @@ package info.yangguo.yfs;
 import info.yangguo.yfs.config.ClusterConfig;
 import info.yangguo.yfs.config.Watchdog;
 import info.yangguo.yfs.util.NetUtils;
+import info.yangguo.yfs.util.GatewayHttpHeaderNames;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.handler.codec.http.HttpRequest;
 import org.littleshoot.proxy.*;
@@ -38,7 +39,7 @@ public class Application {
         threadPoolConfiguration.withClientToProxyWorkerThreads(Constant.ClientToProxyWorkerThreads);
         threadPoolConfiguration.withProxyToServerWorkerThreads(Constant.ProxyToServerWorkerThreads);
 
-        ClusterConfig clusterConfig=new ClusterConfig();
+        ClusterConfig clusterConfig = new ClusterConfig();
 
         Watchdog watchdog = new Watchdog(clusterConfig);
         Thread watchdogThread = new Thread(watchdog);
@@ -59,15 +60,14 @@ public class Application {
                     public void requestReceivedFromClient(FlowContext flowContext,
                                                           HttpRequest httpRequest) {
 
-                        String xffKey = "X-Forwarded-For";
                         StringBuilder xff = new StringBuilder();
-                        List<String> headerValues1 = Constant.getHeaderValues(httpRequest, xffKey);
+                        List<String> headerValues1 = httpRequest.headers().getAll(GatewayHttpHeaderNames.X_FORWARDED_FOR);
                         if (headerValues1.size() > 0 && headerValues1.get(0) != null) {
                             //逗号面一定要带一个空格
                             xff.append(headerValues1.get(0)).append(", ");
                         }
                         xff.append(NetUtils.getLocalHost());
-                        httpRequest.headers().set(xffKey, xff.toString());
+                        httpRequest.headers().set(GatewayHttpHeaderNames.X_FORWARDED_FOR, xff.toString());
                     }
                 })
                 //X-Real-IP设置
@@ -76,10 +76,10 @@ public class Application {
                             @Override
                             public void requestReceivedFromClient(FlowContext flowContext,
                                                                   HttpRequest httpRequest) {
-                                List<String> headerValues2 = Constant.getHeaderValues(httpRequest, "X-Real-IP");
-                                if (headerValues2.size() == 0) {
+                                String realIp = httpRequest.headers().get(GatewayHttpHeaderNames.X_REAL_IP);
+                                if (realIp == null) {
                                     String remoteAddress = flowContext.getClientAddress().getAddress().getHostAddress();
-                                    httpRequest.headers().add("X-Real-IP", remoteAddress);
+                                    httpRequest.headers().add(GatewayHttpHeaderNames.X_REAL_IP, remoteAddress);
                                 }
                             }
                         }
