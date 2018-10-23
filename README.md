@@ -17,4 +17,5 @@ YFS在分布式一致性上基于[Raft协议](https://raft.github.io/)，Atomix�
 ![architecture](https://raw.githubusercontent.com/wiki/chengdedeng/yfs/design.png)
 
 从上图可知YFS由Gateway和分组的Store两部分组成，Gateway主要负责路由、鉴权、流控、安全等非存储功能，Store主要负责存储。每个Group至少由三个Store节点
-组成，这三个Store所存储的数据一模一样，也就是说每个文件至少有三个备份。Gateway也至少有三个节点，Store节点会自动上报metadata给Gateway，Gateway根据Store节点上报的信息来调整自己的路由策略。由于使用Raft来解决分布式数据一致性的问题，所以都最少要求三个点。根据2n+1的原则，所以不论是Gateway还是Group中的Store节点在写入数据的时候，最多只能允许一个节点宕机；但是读操作只要还有一个健康节点，就可以成功返回。
+组成，这三个Store所存储的数据一模一样，也就是说每个文件至少有三个备份。Gateway也至少有三个节点，Store节点会自动上报metadata给Gateway，Gateway根据Store节点上报的信息来调整自己的路由策略。由于使用Raft来解决分布式数据一致性的问题，所以都最少要求三个点。根据2n+1的原则，所以不论是Gateway还是Group中的Store节点在读取写入数据的时候，如果是3个节点，
+则最多只能容忍一个节点宕机。
