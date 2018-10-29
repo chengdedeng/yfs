@@ -107,9 +107,9 @@ public class YfsConfig {
         List<Member> ms = storeMembers.apply(properties);
         String metadataDir = null;
         if (properties.getStore().getMetadata().getDir().startsWith(File.separator)) {
-            metadataDir = String.format(properties.getStore().getMetadata().getDir() + File.separator + "%s", properties.getLocal());
+            metadataDir = properties.getStore().getMetadata().getDir();
         } else {
-            metadataDir = FileUtils.getUserDirectoryPath() + File.separator + String.format(properties.getStore().getMetadata().getDir() + File.separator + "%s", properties.getLocal());
+            metadataDir = FileUtils.getUserDirectoryPath() + File.separator + properties.getStore().getMetadata().getDir();
         }
         ManagedPartitionGroup managementGroup = RaftPartitionGroup.builder("system")
                 .withMembers(ms.stream().map(m -> m.id().id()).collect(Collectors.toSet()))
@@ -127,9 +127,9 @@ public class YfsConfig {
 
         String metadataDir = null;
         if (clusterProperties.getStore().getMetadata().getDir().startsWith(File.separator)) {
-            metadataDir = String.format(clusterProperties.getStore().getMetadata().getDir() + File.separator + "%s", clusterProperties.getLocal());
+            metadataDir = clusterProperties.getStore().getMetadata().getDir();
         } else {
-            metadataDir = FileUtils.getUserDirectoryPath() + File.separator + String.format(clusterProperties.getStore().getMetadata().getDir() + File.separator + "%s", clusterProperties.getLocal());
+            metadataDir = FileUtils.getUserDirectoryPath() + File.separator + clusterProperties.getStore().getMetadata().getDir();
         }
 
         ManagedPartitionGroup dataGroup = RaftPartitionGroup.builder("data")

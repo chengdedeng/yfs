@@ -199,6 +199,7 @@ public class FileService {
         //支持范围请求
         response.setHeader(Metadata.CONTENT_TYPE, fileMetadata.getType());
         response.setHeader(HttpHeaderNames.ACCEPT_RANGES.toString(), "bytes");
+        response.setHeader(Metadata.CONTENT_MD5, fileMetadata.getMd5());
 
         String[] ranges = null;
         //http协议支持单一范围和多重范围查询
@@ -262,7 +263,6 @@ public class FileService {
         } else {//client没有进行范围查询
             response.setStatus(HttpStatus.OK.value());
             response.setHeader(Metadata.CONTENT_LENGTH, String.valueOf(fileMetadata.getSize()));
-            response.setHeader(Metadata.CONTENT_MD5, fileMetadata.getMd5());
 
             File file = new File(filePath);
             try (InputStream inputStream = new FileInputStream(file); OutputStream outputStream = response.getOutputStream()) {

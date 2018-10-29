@@ -65,16 +65,16 @@ public class ClusterConfig {
     private static final Function<ClusterProperties, ManagedPartitionGroup> gatewayManagementGroup = properties -> {
         List<Member> ms = gatewayMembers.apply(properties);
         String metadataDir = null;
-        if (properties.getMetadataDir().startsWith("/")) {
-            metadataDir = String.format(properties.getMetadataDir() + "/%s", properties.getLocal());
+        if (properties.getMetadataDir().startsWith(File.separator)) {
+            metadataDir = properties.getMetadataDir();
         } else {
-            metadataDir = FileUtils.getUserDirectoryPath() + "/" + String.format(properties.getMetadataDir() + "/%s", properties.getLocal());
+            metadataDir = FileUtils.getUserDirectoryPath() + File.separator + properties.getMetadataDir();
         }
         ManagedPartitionGroup managementGroup = RaftPartitionGroup.builder("system")
                 .withMembers(ms.stream().map(m -> m.id().id()).collect(Collectors.toSet()))
                 .withNumPartitions(1)
                 .withPartitionSize(ms.size())
-                .withDataDirectory(new File(metadataDir + "/system"))
+                .withDataDirectory(new File(metadataDir + File.separator + "system"))
                 .build();
 
 
@@ -84,10 +84,10 @@ public class ClusterConfig {
         List<Member> ms = gatewayMembers.apply(clusterProperties);
 
         String metadataDir = null;
-        if (clusterProperties.getMetadataDir().startsWith("/")) {
-            metadataDir = String.format(clusterProperties.getMetadataDir() + "/%s", clusterProperties.getLocal());
+        if (clusterProperties.getMetadataDir().startsWith(File.separator)) {
+            metadataDir = clusterProperties.getMetadataDir();
         } else {
-            metadataDir = FileUtils.getUserDirectoryPath() + "/" + String.format(clusterProperties.getMetadataDir() + "/%s", clusterProperties.getLocal());
+            metadataDir = FileUtils.getUserDirectoryPath() + File.separator + clusterProperties.getMetadataDir();
         }
 
         ManagedPartitionGroup dataGroup = RaftPartitionGroup.builder("data")
@@ -96,7 +96,7 @@ public class ClusterConfig {
                 .withPartitionSize(3)
                 .withStorageLevel(StorageLevel.DISK)
                 .withFlushOnCommit(false)
-                .withDataDirectory(new File(metadataDir + "/data"))
+                .withDataDirectory(new File(metadataDir + File.separator + "data"))
                 .build();
 
         return dataGroup;
