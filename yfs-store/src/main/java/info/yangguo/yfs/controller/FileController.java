@@ -100,12 +100,12 @@ public class FileController extends BaseController {
 
     @ApiOperation(value = "data synchronization between nodes")
     @RequestMapping(value = "${yfs.group}/{first}/{second}/{name:.+}", method = {RequestMethod.GET})
-    public void download(@PathVariable String first, @PathVariable String second, @PathVariable String name, HttpServletResponse response) {
+    public void download(@PathVariable String first, @PathVariable String second, @PathVariable String name, @RequestHeader(required = false) String range, HttpServletRequest request, HttpServletResponse response) {
         String path = clusterProperties.getGroup() + File.separator + first + File.separator + second + File.separator + name;
         try {
             Versioned<FileMetadata> fileMetadata = yfsConfig.fileMetadataMap.get(path);
             if (fileMetadata != null) {
-                FileService.getFile(clusterProperties, fileMetadata.value(), response);
+                FileService.getFile(clusterProperties, fileMetadata.value(), request, response);
             }
         } catch (Exception e) {
             logger.error("download file:{}", path, e);
