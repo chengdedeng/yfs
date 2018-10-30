@@ -19,12 +19,16 @@ import info.yangguo.yfs.common.po.FileMetadata;
 import info.yangguo.yfs.config.ClusterProperties;
 import info.yangguo.yfs.config.YfsConfig;
 import io.atomix.utils.time.Versioned;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
 public class MetadataService {
-    public static boolean create(ClusterProperties clusterProperties, YfsConfig yfsConfig, FileMetadata fileMetadata, int qos) throws InterruptedException {
+    private static Logger LOGGER = LoggerFactory.getLogger(MetadataService.class);
+
+    public static boolean create(ClusterProperties clusterProperties, YfsConfig yfsConfig, FileMetadata fileMetadata, int qos) {
         boolean result = false;
         fileMetadata.getAddNodes().add(clusterProperties.getLocal());
         CountDownLatch countDownLatch = new CountDownLatch(qos);
@@ -32,8 +36,13 @@ public class MetadataService {
         yfsConfig.fileMetadataMap.put(fileMetadata.getPath(), fileMetadata);
         //Preventing network traffic from failing
         countDownLatch.countDown();
-        result = countDownLatch.await(clusterProperties.getStore().getQos_max_time(), TimeUnit.SECONDS);
-        yfsConfig.cache.invalidate(fileMetadata.getPath());
+        try {
+            result = countDownLatch.await(clusterProperties.getStore().getQos_max_time(), TimeUnit.SECONDS);
+        } catch (InterruptedException e) {
+            LOGGER.warn("{} QOS fail!", fileMetadata);
+        } finally {
+            yfsConfig.cache.invalidate(fileMetadata.getPath());
+        }
         return result;
     }
 
