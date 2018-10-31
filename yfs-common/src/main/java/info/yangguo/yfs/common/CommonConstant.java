@@ -15,7 +15,7 @@
  */
 package info.yangguo.yfs.common;
 
-import info.yangguo.yfs.common.po.FileMetadata;
+import info.yangguo.yfs.common.po.FileEvent;
 import info.yangguo.yfs.common.po.ServerMetadata;
 import info.yangguo.yfs.common.po.StoreInfo;
 import io.atomix.utils.serializer.Namespace;
@@ -32,12 +32,14 @@ public class CommonConstant {
     public static final String xHeaderPrefix = "x-yfs-";
     public static final String gatewayZone = "gateway";
     public static final String storeZone = "store";
+    public static final String contentCrc32 = "x-content-crc32";
+    public static final String fileName = "x-filename";
 
     public static final Serializer protocolSerializer = Serializer.using(Namespace.builder()
             .register(ArrayList.class)
             .register(Date.class)
             .register(StoreInfo.class)
-            .register(FileMetadata.class)
+            .register(FileEvent.class)
             .register(ServerMetadata.class)
             .register(Map.class)
             .register(HashMap.class)

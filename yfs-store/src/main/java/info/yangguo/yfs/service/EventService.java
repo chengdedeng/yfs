@@ -15,7 +15,7 @@
  */
 package info.yangguo.yfs.service;
 
-import info.yangguo.yfs.common.po.FileMetadata;
+import info.yangguo.yfs.common.po.FileEvent;
 import info.yangguo.yfs.config.ClusterProperties;
 import info.yangguo.yfs.config.YfsConfig;
 import io.atomix.utils.time.Versioned;
@@ -25,35 +25,37 @@ import org.slf4j.LoggerFactory;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
-public class MetadataService {
-    private static Logger LOGGER = LoggerFactory.getLogger(MetadataService.class);
+public class EventService {
+    private static Logger LOGGER = LoggerFactory.getLogger(EventService.class);
 
-    public static boolean create(ClusterProperties clusterProperties, YfsConfig yfsConfig, FileMetadata fileMetadata, int qos) {
+    public static boolean create(ClusterProperties clusterProperties, YfsConfig yfsConfig, String path, int qos) {
         boolean result = false;
-        fileMetadata.getAddNodes().add(clusterProperties.getLocal());
+        FileEvent fileEvent = new FileEvent();
+        fileEvent.setPath(path);
+        fileEvent.getAddNodes().add(clusterProperties.getLocal());
         CountDownLatch countDownLatch = new CountDownLatch(qos);
-        yfsConfig.cache.put(fileMetadata.getPath(), countDownLatch);
-        yfsConfig.fileMetadataMap.put(fileMetadata.getPath(), fileMetadata);
+        yfsConfig.cache.put(fileEvent.getPath(), countDownLatch);
+        yfsConfig.fileEventMap.put(fileEvent.getPath(), fileEvent);
         //Preventing network traffic from failing
         countDownLatch.countDown();
         try {
             result = countDownLatch.await(clusterProperties.getStore().getQos_max_time(), TimeUnit.SECONDS);
         } catch (InterruptedException e) {
-            LOGGER.warn("{} QOS fail!", fileMetadata);
+            LOGGER.warn("{} QOS fail!", fileEvent);
         } finally {
-            yfsConfig.cache.invalidate(fileMetadata.getPath());
+            yfsConfig.cache.invalidate(fileEvent.getPath());
         }
         return result;
     }
 
-    public static boolean softDelete(ClusterProperties clusterProperties, YfsConfig yfsConfig, FileMetadata fileMetadata) {
+    public static boolean softDelete(ClusterProperties clusterProperties, YfsConfig yfsConfig, String path) {
         boolean result = false;
-        Versioned<FileMetadata> tmp = yfsConfig.fileMetadataMap.get(fileMetadata.getPath());
+        Versioned<FileEvent> tmp = yfsConfig.fileEventMap.get(path);
         if (tmp != null) {
             long version = tmp.version();
-            fileMetadata = tmp.value();
-            fileMetadata.getRemoveNodes().add(clusterProperties.getLocal());
-            result = yfsConfig.fileMetadataMap.replace(fileMetadata.getPath(), version, fileMetadata);
+            FileEvent fileEvent = tmp.value();
+            fileEvent.getRemoveNodes().add(clusterProperties.getLocal());
+            result = yfsConfig.fileEventMap.replace(path, version, fileEvent);
         }
         return result;
     }

@@ -20,7 +20,7 @@ import com.google.common.cache.CacheBuilder;
 import com.google.common.cache.RemovalListener;
 import com.google.common.cache.RemovalNotification;
 import info.yangguo.yfs.common.CommonConstant;
-import info.yangguo.yfs.common.po.FileMetadata;
+import info.yangguo.yfs.common.po.FileEvent;
 import info.yangguo.yfs.common.po.StoreInfo;
 import info.yangguo.yfs.common.utils.JsonUtil;
 import info.yangguo.yfs.service.FileService;
@@ -65,7 +65,7 @@ import java.util.stream.Collectors;
 @Component
 public class YfsConfig {
     private static Logger logger = LoggerFactory.getLogger(YfsConfig.class);
-    public AtomicMap<String, FileMetadata> fileMetadataMap = null;
+    public AtomicMap<String, FileEvent> fileEventMap = null;
     public AtomicMap<String, StoreInfo> storeInfoMap = null;
     private HttpClient httpClient;
     public Cache<String, CountDownLatch> cache;
@@ -185,47 +185,47 @@ public class YfsConfig {
                 .withPartitionGroups(storeDataGroup.apply(clusterProperties))
                 .build();
         atomix.start().join();
-        fileMetadataMap = atomix.<String, FileMetadata>atomicMapBuilder(CommonConstant.fileMetadataMapName)
+        fileEventMap = atomix.<String, FileEvent>atomicMapBuilder(CommonConstant.fileMetadataMapName)
                 .withProtocol(MultiRaftProtocol.builder()
                         .withReadConsistency(ReadConsistency.LINEARIZABLE)
                         .build())
                 .withSerializer(CommonConstant.protocolSerializer)
                 .build();
-        fileMetadataMap.addListener(event -> {
+        fileEventMap.addListener(event -> {
             switch (event.type()) {
                 case INSERT:
-                    Versioned<FileMetadata> tmp1 = event.newValue();
-                    FileMetadata fileMetadata1 = tmp1.value();
-                    if (!fileMetadata1.getAddNodes().contains(clusterProperties.getLocal())) {
+                    Versioned<FileEvent> tmp1 = event.newValue();
+                    FileEvent fileEvent1 = tmp1.value();
+                    if (!fileEvent1.getAddNodes().contains(clusterProperties.getLocal())) {
                         logger.info("{} Event Info:\n{}",
                                 MapEvent.Type.INSERT.name(),
-                                JsonUtil.toJson(fileMetadata1, true));
-                        syncFile(clusterProperties, fileMetadata1.getAddNodes(), fileMetadata1);
-                        updateAddNodes(clusterProperties, fileMetadata1.getPath(), MapEvent.Type.INSERT.name());
+                                JsonUtil.toJson(fileEvent1, true));
+                        syncFile(clusterProperties, fileEvent1.getAddNodes(), fileEvent1);
+                        updateAddNodes(clusterProperties, fileEvent1.getPath(), MapEvent.Type.INSERT.name());
                     }
                 case UPDATE:
-                    Versioned<FileMetadata> tmp2 = event.newValue();
-                    Versioned<FileMetadata> tmp3 = event.oldValue();
-                    FileMetadata fileMetadata2 = tmp2.value();
-                    List<String> addNodes = fileMetadata2.getAddNodes();
-                    List<String> removeNodes = fileMetadata2.getRemoveNodes();
+                    Versioned<FileEvent> tmp2 = event.newValue();
+                    Versioned<FileEvent> tmp3 = event.oldValue();
+                    FileEvent fileEvent2 = tmp2.value();
+                    List<String> addNodes = fileEvent2.getAddNodes();
+                    List<String> removeNodes = fileEvent2.getRemoveNodes();
                     if (tmp3 != null && removeNodes.size() == 0
                             && !addNodes.contains(clusterProperties.getLocal())) {
-                        FileMetadata fileMetadata3 = tmp3.value();
+                        FileEvent fileEvent3 = tmp3.value();
                         logger.info("{} Event Info:\nOldValue:{}\nNewValue:{}",
                                 MapEvent.Type.UPDATE.name(),
-                                JsonUtil.toJson(fileMetadata3, true),
-                                JsonUtil.toJson(fileMetadata2, true));
-                        syncFile(clusterProperties, addNodes, fileMetadata2);
-                        updateAddNodes(clusterProperties, fileMetadata2.getPath(), MapEvent.Type.UPDATE.name());
+                                JsonUtil.toJson(fileEvent3, true),
+                                JsonUtil.toJson(fileEvent2, true));
+                        syncFile(clusterProperties, addNodes, fileEvent2);
+                        updateAddNodes(clusterProperties, fileEvent2.getPath(), MapEvent.Type.UPDATE.name());
                     } else if (removeNodes.size() > 0 && !removeNodes.contains(clusterProperties.getLocal())) {
-                        FileMetadata fileMetadata3 = tmp3.value();
+                        FileEvent fileEvent3 = tmp3.value();
                         logger.info("{} Event Info:\nOldValue:{}\nNewValue:{}",
                                 MapEvent.Type.UPDATE.name(),
-                                JsonUtil.toJson(fileMetadata3, true),
-                                JsonUtil.toJson(fileMetadata2, true));
-                        FileService.delete(clusterProperties, fileMetadata2);
-                        updateRemoveNodes(clusterProperties, fileMetadata2.getPath());
+                                JsonUtil.toJson(fileEvent3, true),
+                                JsonUtil.toJson(fileEvent2, true));
+                        FileService.delete(clusterProperties, fileEvent2.getPath());
+                        updateRemoveNodes(clusterProperties, fileEvent2.getPath());
                     }
                     //为了实现QOS，yfs使用CountDownLatch来实现上传节点的有限时间阻塞，由yfs.store.qos_max_time配置决定。
                     //上传节点在上传之前会创建一个CountDownLatch放入到本地缓存，文件上传完成之后，上传节点自身会发布update event信息；
@@ -234,7 +234,7 @@ public class YfsConfig {
                     //特别注意新增节点为了防止网络导致的通知不可达，所以新增节点latch.countDown在写入元数据的时候就已经减一了，所以需要
                     //addNodes.size>1
                     if (removeNodes.size() == 0 && addNodes.size() > 1 && clusterProperties.getLocal().equals(addNodes.get(0))) {
-                        CountDownLatch latch = cache.getIfPresent(fileMetadata2.getPath());
+                        CountDownLatch latch = cache.getIfPresent(fileEvent2.getPath());
                         if (latch != null) {
                             latch.countDown();
                         }
@@ -269,16 +269,16 @@ public class YfsConfig {
     }
 
 
-    private void syncFile(ClusterProperties clusterProperties, List<String> addNodes, FileMetadata fileMetadata) {
+    private void syncFile(ClusterProperties clusterProperties, List<String> addNodes, FileEvent fileEvent) {
         for (String addNode : addNodes) {
             ClusterProperties.ClusterNode clusterNode = storeNodeMap.apply(clusterProperties).get(addNode);
-            String url = "http://" + clusterNode.getIp() + ":" + clusterNode.getHttp_port() + "/" + fileMetadata.getPath();
+            String url = "http://" + clusterNode.getIp() + ":" + clusterNode.getHttp_port() + "/" + fileEvent.getPath();
             HttpUriRequest httpUriRequest = new HttpGet(url);
-            String id = fileMetadata.getPath();
+            String id = fileEvent.getPath();
             try {
                 HttpResponse response = httpClient.execute(httpUriRequest);
                 if (200 == response.getStatusLine().getStatusCode()) {
-                    FileService.store(clusterProperties, fileMetadata, response);
+                    FileService.store(clusterProperties, id, response);
                     logger.info("Sync Success:{}", id);
                     break;
                 }
@@ -290,20 +290,20 @@ public class YfsConfig {
 
     private boolean updateAddNodes(ClusterProperties clusterProperties, String key, String eventType) {
         boolean result = false;
-        FileMetadata fileMetadata = null;
+        FileEvent fileEvent = null;
         try {
-            Versioned<FileMetadata> tmp = fileMetadataMap.get(key);
+            Versioned<FileEvent> tmp = fileEventMap.get(key);
             long version = tmp.version();
-            fileMetadata = tmp.value();
-            if (!fileMetadata.getAddNodes().contains(clusterProperties.getLocal())) {
-                fileMetadata.getAddNodes().add(clusterProperties.getLocal());
+            fileEvent = tmp.value();
+            if (!fileEvent.getAddNodes().contains(clusterProperties.getLocal())) {
+                fileEvent.getAddNodes().add(clusterProperties.getLocal());
             }
-            result = fileMetadataMap.replace(key, version, fileMetadata);
+            result = fileEventMap.replace(key, version, fileEvent);
         } catch (Exception e) {
             logger.warn("{} UpdateAddNodes Failure:{}", eventType, key, e);
         }
         if (result == true) {
-            logger.info("{} UpdateAddNodes Info:{}", eventType, JsonUtil.toJson(fileMetadata, true));
+            logger.info("{} UpdateAddNodes Info:{}", eventType, JsonUtil.toJson(fileEvent, true));
             logger.info("{} UpdateAddNodes Success:{}", eventType, key);
         }
         return result;
@@ -311,25 +311,25 @@ public class YfsConfig {
 
     private boolean updateRemoveNodes(ClusterProperties clusterProperties, String key) {
         boolean result = false;
-        FileMetadata fileMetadata = null;
+        FileEvent fileEvent = null;
         try {
-            Versioned<FileMetadata> tmp = fileMetadataMap.get(key);
+            Versioned<FileEvent> tmp = fileEventMap.get(key);
             long version = tmp.version();
-            fileMetadata = tmp.value();
-            if (!fileMetadata.getRemoveNodes().contains(clusterProperties.getLocal())) {
-                fileMetadata.getRemoveNodes().add(clusterProperties.getLocal());
+            fileEvent = tmp.value();
+            if (!fileEvent.getRemoveNodes().contains(clusterProperties.getLocal())) {
+                fileEvent.getRemoveNodes().add(clusterProperties.getLocal());
             }
-            if (fileMetadata.getRemoveNodes().size() == clusterProperties.getStore().getNode().size()) {
-                fileMetadataMap.remove(key);
+            if (fileEvent.getRemoveNodes().size() == clusterProperties.getStore().getNode().size()) {
+                fileEventMap.remove(key);
                 result = true;
             } else {
-                result = fileMetadataMap.replace(key, version, fileMetadata);
+                result = fileEventMap.replace(key, version, fileEvent);
             }
         } catch (Exception e) {
             logger.warn("UpdateRemoveNodes Failure:{}", key, e);
         }
         if (result == true) {
-            logger.info("UpdateRemoveNodes Info:{}", JsonUtil.toJson(fileMetadata, true));
+            logger.info("UpdateRemoveNodes Info:{}", JsonUtil.toJson(fileEvent, true));
             logger.info("UpdateRemoveNodes Success:{}", key);
         }
         return result;

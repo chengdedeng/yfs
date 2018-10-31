@@ -15,7 +15,7 @@
  */
 package info.yangguo.yfs.controller;
 
-import info.yangguo.yfs.common.po.FileMetadata;
+import info.yangguo.yfs.common.po.FileEvent;
 import info.yangguo.yfs.config.ClusterProperties;
 import info.yangguo.yfs.config.YfsConfig;
 import info.yangguo.yfs.dto.Result;
@@ -48,16 +48,16 @@ public class AdminController extends BaseController {
         Result result = new Result<>();
         HashSet<String> anomalyFile = new HashSet<>();
         try {
-            yfsConfig.fileMetadataMap.values().stream().forEach(fileMetadataVersioned -> {
+            yfsConfig.fileEventMap.values().stream().forEach(fileMetadataVersioned -> {
                 long version = fileMetadataVersioned.version();
-                FileMetadata fileMetadata = fileMetadataVersioned.value();
-                fileMetadata.getAddNodes().remove(node);
+                FileEvent fileEvent = fileMetadataVersioned.value();
+                fileEvent.getAddNodes().remove(node);
                 try {
-                    if (false == yfsConfig.fileMetadataMap.replace(fileMetadata.getPath(), version, fileMetadata)) {
-                        anomalyFile.add(fileMetadata.getPath());
+                    if (false == yfsConfig.fileEventMap.replace(fileEvent.getPath(), version, fileEvent)) {
+                        anomalyFile.add(fileEvent.getPath());
                     }
                 } catch (Exception e) {
-                    anomalyFile.add(fileMetadata.getPath());
+                    anomalyFile.add(fileEvent.getPath());
                 }
             });
             if (anomalyFile.size() == 0) {
@@ -79,12 +79,12 @@ public class AdminController extends BaseController {
         Result result = new Result<>();
         try {
             String path = clusterProperties.getGroup() + File.separator + first + File.separator + second + File.separator + name;
-            Versioned<FileMetadata> versioned = yfsConfig.fileMetadataMap.get(path);
+            Versioned<FileEvent> versioned = yfsConfig.fileEventMap.get(path);
             if (versioned != null) {
                 long version = versioned.version();
-                FileMetadata fileMetadata = versioned.value();
-                fileMetadata.getAddNodes().remove(node);
-                if (false == yfsConfig.fileMetadataMap.replace(path, version, fileMetadata)) {
+                FileEvent fileEvent = versioned.value();
+                fileEvent.getAddNodes().remove(node);
+                if (false == yfsConfig.fileEventMap.replace(path, version, fileEvent)) {
                     result.setCode(ResultCode.C202.getCode());
                 } else {
                     result.setCode(ResultCode.C200.getCode());

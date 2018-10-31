@@ -17,7 +17,7 @@ package info.yangguo.yfs.controller;
 
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
-import info.yangguo.yfs.common.po.FileMetadata;
+import info.yangguo.yfs.common.po.FileEvent;
 import info.yangguo.yfs.config.ClusterProperties;
 import info.yangguo.yfs.config.YfsConfig;
 import info.yangguo.yfs.dto.Result;
@@ -51,19 +51,19 @@ public class MetadataController extends BaseController {
         Result result = new Result<>();
         Map<String, Object> values = Maps.newHashMap();
         try {
-            AtomicMap<String, FileMetadata> atomicMap = yfsConfig.fileMetadataMap;
+            AtomicMap<String, FileEvent> atomicMap = yfsConfig.fileEventMap;
             values.put("count", atomicMap.size());
             values.put("page", page);
             values.put("pageSize", pageSize);
             Integer begin = (page - 1) * pageSize;
             Integer end = page * pageSize;
-            List<FileMetadata> metadataList = Lists.newArrayList();
+            List<FileEvent> metadataList = Lists.newArrayList();
             if (begin < atomicMap.size()) {
-                SyncIterator<Map.Entry<String, Versioned<FileMetadata>>> iterator = atomicMap.entrySet().iterator();
+                SyncIterator<Map.Entry<String, Versioned<FileEvent>>> iterator = atomicMap.entrySet().iterator();
                 Integer i = 0;
                 while (iterator.hasNext()) {
                     if (i >= begin && i < end) {
-                        Map.Entry<String, Versioned<FileMetadata>> entry = iterator.next();
+                        Map.Entry<String, Versioned<FileEvent>> entry = iterator.next();
                         metadataList.add(entry.getValue().value());
                     } else if (i > end) {
                         break;
@@ -81,19 +81,4 @@ public class MetadataController extends BaseController {
         }
         outputResult(response, result);
     }
-
-//    @ApiOperation(value = "get metadata for one file")
-//    @RequestMapping(value = "file/{partition}//{name:.+}", method = {RequestMethod.GET})
-//    public void getOneFileMetadata(@PathVariable Integer partition, @PathVariable String name, HttpServletResponse response) {
-//        Result result = new Result<>();
-//        try {
-//            FileMetadata metadata = YfsConfig.fileMetadataMap.get(key).value();
-//            result.setValue(metadata);
-//            result.setCode(ResultCode.C200.getCode());
-//        } catch (Exception e) {
-//            result.setCode(ResultCode.C500.getCode());
-//            result.setValue(ResultCode.C500.getDesc());
-//        }
-//        outputResult(response, result);
-//    }
 }

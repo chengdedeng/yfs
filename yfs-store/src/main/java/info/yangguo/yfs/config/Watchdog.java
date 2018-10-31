@@ -16,7 +16,7 @@
 package info.yangguo.yfs.config;
 
 import info.yangguo.yfs.common.CommonConstant;
-import info.yangguo.yfs.common.po.FileMetadata;
+import info.yangguo.yfs.common.po.FileEvent;
 import info.yangguo.yfs.common.po.StoreInfo;
 import info.yangguo.yfs.common.utils.JsonUtil;
 import io.atomix.utils.time.Versioned;
@@ -43,14 +43,14 @@ public class Watchdog {
 
     @Scheduled(initialDelayString = "${yfs.store.watchdog.initial_delay}", fixedDelayString = "${yfs.store.watchdog.fixed_delay}")
     public void watchFile() {
-        Collection<Versioned<FileMetadata>> metadata = yfsConfig.fileMetadataMap.values();
+        Collection<Versioned<FileEvent>> metadata = yfsConfig.fileEventMap.values();
         metadata.parallelStream().forEach(fileMetadataVersioned -> {
-            FileMetadata fileMetadata = fileMetadataVersioned.value();
+            FileEvent fileEvent = fileMetadataVersioned.value();
             long version = fileMetadataVersioned.version();
-            if ((fileMetadata.getRemoveNodes().size() > 0 && !fileMetadata.getRemoveNodes().contains(clusterProperties.getLocal()))
-                    || (fileMetadata.getRemoveNodes().size() == 0 && !fileMetadata.getAddNodes().contains(clusterProperties.getLocal()))) {
-                logger.info("Resync:\n{}", JsonUtil.toJson(fileMetadata, true));
-                yfsConfig.fileMetadataMap.replace(fileMetadata.getPath(), version, fileMetadata);
+            if ((fileEvent.getRemoveNodes().size() > 0 && !fileEvent.getRemoveNodes().contains(clusterProperties.getLocal()))
+                    || (fileEvent.getRemoveNodes().size() == 0 && !fileEvent.getAddNodes().contains(clusterProperties.getLocal()))) {
+                logger.info("Resync:\n{}", JsonUtil.toJson(fileEvent, true));
+                yfsConfig.fileEventMap.replace(fileEvent.getPath(), version, fileEvent);
             }
         });
         logger.debug("file**************************watchdog");

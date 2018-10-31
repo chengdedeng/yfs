@@ -15,13 +15,14 @@
  */
 package info.yangguo.yfs.controller;
 
+import info.yangguo.yfs.common.po.FileEvent;
 import info.yangguo.yfs.common.po.FileMetadata;
 import info.yangguo.yfs.config.ClusterProperties;
 import info.yangguo.yfs.config.YfsConfig;
 import info.yangguo.yfs.dto.Result;
 import info.yangguo.yfs.dto.ResultCode;
 import info.yangguo.yfs.service.FileService;
-import info.yangguo.yfs.service.MetadataService;
+import info.yangguo.yfs.service.EventService;
 import io.atomix.utils.time.Versioned;
 import io.swagger.annotations.ApiOperation;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -46,19 +47,15 @@ public class FileController extends BaseController {
     @ApiOperation(value = "upload file")
     @ResponseBody
     @RequestMapping(value = "api/file", method = {RequestMethod.POST})
-    public Result upload(MultipartFile file, @RequestParam(value = "qos", required = false) Integer qos, HttpServletRequest httpServletRequest) {
+    public Result upload(MultipartFile file, HttpServletRequest httpServletRequest) {
         logger.info("upload file:{}", file.getName());
         Result result = new Result();
         FileMetadata fileMetadata = null;
-        if (qos == null || qos < 1) {
-            qos = 1;
-        } else if (qos > clusterProperties.getStore().getNode().size()) {
-            qos = clusterProperties.getStore().getNode().size();
-        }
+        int qos = 2;
         try {
             CommonsMultipartFile commonsMultipartFile = (CommonsMultipartFile) file;
             fileMetadata = FileService.store(clusterProperties, commonsMultipartFile, httpServletRequest);
-            boolean qosResult = MetadataService.create(clusterProperties, yfsConfig, fileMetadata, qos);
+            boolean qosResult = EventService.create(clusterProperties, yfsConfig, fileMetadata.getPath(), qos);
             if (qosResult == true) {
                 result.setCode(ResultCode.C200.code);
             } else {
@@ -68,7 +65,7 @@ public class FileController extends BaseController {
         } catch (Exception e) {
             logger.error("upload api:{}", e);
             if (fileMetadata != null) {
-                FileService.delete(clusterProperties, fileMetadata);
+                FileService.delete(clusterProperties, fileMetadata.getPath());
             }
             result.setCode(ResultCode.C500.getCode());
             result.setValue(ResultCode.C500.getDesc());
@@ -83,10 +80,10 @@ public class FileController extends BaseController {
         logger.info("delete file:{}", path);
         Result result = new Result();
         try {
-            Versioned<FileMetadata> fileMetadata = yfsConfig.fileMetadataMap.get(path);
-            if (fileMetadata != null) {
-                if (MetadataService.softDelete(clusterProperties, yfsConfig, fileMetadata.value())) {
-                    FileService.delete(clusterProperties, fileMetadata.value());
+            Versioned<FileEvent> fileEventVersioned = yfsConfig.fileEventMap.get(path);
+            if (fileEventVersioned != null) {
+                if (EventService.softDelete(clusterProperties, yfsConfig, fileEventVersioned.value().getPath())) {
+                    FileService.delete(clusterProperties, fileEventVersioned.value().getPath());
                     result.setCode(ResultCode.C200.code);
                 }
             }
@@ -103,10 +100,7 @@ public class FileController extends BaseController {
     public void download(@PathVariable String first, @PathVariable String second, @PathVariable String name, @RequestHeader(required = false) String range, HttpServletRequest request, HttpServletResponse response) {
         String path = clusterProperties.getGroup() + File.separator + first + File.separator + second + File.separator + name;
         try {
-            Versioned<FileMetadata> fileMetadata = yfsConfig.fileMetadataMap.get(path);
-            if (fileMetadata != null) {
-                FileService.getFile(clusterProperties, fileMetadata.value(), request, response);
-            }
+            FileService.getFile(clusterProperties, path, request, response);
         } catch (Exception e) {
             logger.error("download file:{}", path, e);
         }

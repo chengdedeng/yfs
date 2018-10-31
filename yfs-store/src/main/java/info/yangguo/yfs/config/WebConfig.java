@@ -83,6 +83,7 @@ public class WebConfig {
     @Bean
     public MultipartResolver multipartResolver() {
         CommonsMultipartResolver multipartResolver = new CommonsMultipartResolver();
+        multipartResolver.setDefaultEncoding("UTF-8");
         multipartResolver.setMaxUploadSize(clusterProperties.getStore().getMax_upload_size());
         return multipartResolver;
     }
