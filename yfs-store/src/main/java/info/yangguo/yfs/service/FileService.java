@@ -53,7 +53,6 @@ import java.util.function.Function;
 public class FileService {
     private static Logger logger = LoggerFactory.getLogger(FileService.class);
     private static Map<String, Long> runningFile = new ConcurrentHashMap<>();
-    private static TwitterSnowFlake twitterSnowFlake = new TwitterSnowFlake();
     private static String timePattern = "EEE, dd MMM yyyy HH:mm:ss";
     /**
      * 获取文件扩展名
@@ -78,7 +77,7 @@ public class FileService {
     public static FileMetadata store(ClusterProperties clusterProperties, CommonsMultipartFile commonsMultipartFile, HttpServletRequest httpServletRequest) throws IOException {
         Integer block1 = new Random().nextInt(clusterProperties.getStore().getFiledata().getPartition()) + 1;
         Integer block2 = new Random().nextInt(clusterProperties.getStore().getFiledata().getPartition()) + 1;
-        String newName = twitterSnowFlake.next() + "-" + new Date().getTime() + "-" + clusterProperties.getLocal();
+        String newName = IdMaker.getInstance(clusterProperties.getGroup(), clusterProperties.getLocal()).next();
         String fileName = commonsMultipartFile.getOriginalFilename();
         String exFileName = getExFileName.apply(fileName);
         String filePath = null;
