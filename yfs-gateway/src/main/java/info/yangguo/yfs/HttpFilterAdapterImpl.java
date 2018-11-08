@@ -15,17 +15,19 @@
  */
 package info.yangguo.yfs;
 
+import com.google.common.collect.Lists;
 import info.yangguo.yfs.config.Watchdog;
-import info.yangguo.yfs.request.CCHttpRequestFilter;
-import info.yangguo.yfs.request.HttpRequestFilter;
-import info.yangguo.yfs.request.HttpRequestFilterChain;
+import info.yangguo.yfs.request.RequestFilter;
+import info.yangguo.yfs.request.RewriteFilter;
 import info.yangguo.yfs.util.ResponseUtil;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelPipeline;
-import io.netty.handler.codec.http.*;
+import io.netty.handler.codec.http.HttpObject;
+import io.netty.handler.codec.http.HttpRequest;
+import io.netty.handler.codec.http.HttpResponse;
+import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.util.concurrent.Future;
 import io.netty.util.concurrent.GenericFutureListener;
-import org.apache.commons.lang3.tuple.ImmutablePair;
 import org.littleshoot.proxy.HttpFiltersAdapter;
 import org.littleshoot.proxy.impl.ClientToProxyConnection;
 import org.littleshoot.proxy.impl.ProxyConnection;
@@ -44,13 +46,6 @@ import java.util.List;
  */
 public class HttpFilterAdapterImpl extends HttpFiltersAdapter {
     private static Logger logger = LoggerFactory.getLogger(HttpFilterAdapterImpl.class);
-    private static final HttpRequestFilterChain httpRequestFilterChain = new HttpRequestFilterChain();
-
-    static {
-        if (Constant.gatewayConfs.get("gateway.cc").equals("on")) {
-            httpRequestFilterChain.addFilter(new CCHttpRequestFilter());
-        }
-    }
 
     private Watchdog watchdog;
 
@@ -63,17 +58,26 @@ public class HttpFilterAdapterImpl extends HttpFiltersAdapter {
 
     @Override
     public HttpResponse clientToProxyRequest(HttpObject httpObject) {
-        HttpResponse httpResponse = null;
-        try {
-            ImmutablePair<Boolean, HttpRequestFilter> immutablePair = httpRequestFilterChain.doFilter(originalRequest, httpObject, ctx);
-            if (immutablePair.left) {
-                httpResponse = ResponseUtil.createResponse(HttpResponseStatus.FORBIDDEN, originalRequest, null);
+        //放到里面主要是为了线程安全，由于一条链路不断的情况下，多个请求过来都在一个ClientToProxy线程中，但是对于Filter来说确实多线程处理的，
+        //不放在里面就会报对List操作的操作异常。
+        List<RequestFilter> requestFilters = Lists.newArrayList();
+        //注意顺序
+        requestFilters.add(new RewriteFilter());
+
+        HttpResponse response = null;
+        for (RequestFilter filter : requestFilters) {
+            try {
+                response = filter.doFilter(originalRequest, httpObject);
+            } catch (Exception e) {
+                logger.warn("request client to proxy failed", e);
+                response = ResponseUtil.createResponse(HttpResponseStatus.BAD_GATEWAY, originalRequest, null);
             }
-        } catch (Exception e) {
-            httpResponse = ResponseUtil.createResponse(HttpResponseStatus.BAD_GATEWAY, originalRequest, null);
-            logger.error("client's request failed", e.getCause());
+            if (response != null) {
+                break;
+            }
         }
-        return httpResponse;
+
+        return response;
     }
 
     @Override

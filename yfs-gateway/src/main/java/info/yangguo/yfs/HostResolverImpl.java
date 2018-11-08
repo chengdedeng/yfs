@@ -64,12 +64,10 @@ public class HostResolverImpl implements HostResolver {
     public InetSocketAddress resolve(String host, int port)
             throws UnknownHostException {
         WeightedRoundRobinScheduling.Server server = null;
-        //上传域名比下载域名长一段
-        //例如：上传域名为yfs.info，下载域名为group1.yfs.info。
-        if (host.equals(clusterConfig.clusterProperties.dn)) {
+        if (host.equals("upload")) {
             server = uploadServers.getServer();
-        } else if (host.endsWith(clusterConfig.clusterProperties.dn)) {
-            WeightedRoundRobinScheduling weightedRoundRobinScheduling = downloadServers.get(host.split("\\.")[0]);
+        } else {
+            WeightedRoundRobinScheduling weightedRoundRobinScheduling = downloadServers.get(host);
             server = weightedRoundRobinScheduling.getServer();
         }
         if (server != null) {

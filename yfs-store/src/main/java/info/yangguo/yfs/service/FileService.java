@@ -18,6 +18,7 @@ package info.yangguo.yfs.service;
 import com.google.common.collect.Maps;
 import info.yangguo.yfs.common.CommonConstant;
 import info.yangguo.yfs.common.po.FileMetadata;
+import info.yangguo.yfs.common.utils.IdMaker;
 import info.yangguo.yfs.common.utils.JsonUtil;
 import info.yangguo.yfs.config.ClusterProperties;
 import io.netty.handler.codec.http.HttpHeaderNames;
@@ -77,14 +78,14 @@ public class FileService {
     public static FileMetadata store(ClusterProperties clusterProperties, CommonsMultipartFile commonsMultipartFile, HttpServletRequest httpServletRequest) throws IOException {
         Integer block1 = new Random().nextInt(clusterProperties.getStore().getFiledata().getPartition()) + 1;
         Integer block2 = new Random().nextInt(clusterProperties.getStore().getFiledata().getPartition()) + 1;
-        String newName = IdMaker.getInstance(clusterProperties.getGroup(), clusterProperties.getLocal()).next();
+        String newName = IdMaker.INSTANCE.next(clusterProperties.getGroup(), clusterProperties.getLocal());
         String fileName = commonsMultipartFile.getOriginalFilename();
         String exFileName = getExFileName.apply(fileName);
         String filePath = null;
         if (exFileName != null)
-            filePath = clusterProperties.getGroup() + File.separator + Integer.toHexString(block1) + File.separator + Integer.toHexString(block2) + File.separator + newName + "." + exFileName;
+            filePath = Integer.toHexString(block1) + File.separator + Integer.toHexString(block2) + File.separator + newName + "." + exFileName;
         else
-            filePath = clusterProperties.getGroup() + File.separator + Integer.toHexString(block1) + File.separator + Integer.toHexString(block2) + File.separator + newName;
+            filePath = Integer.toHexString(block1) + File.separator + Integer.toHexString(block2) + File.separator + newName;
 
         FileMetadata fileMetadata = new FileMetadata();
         fileMetadata.setPath(filePath);
@@ -259,8 +260,10 @@ public class FileService {
         response.setHeader(Metadata.CONTENT_TYPE, fileMetadata.getType());
         response.setHeader(Metadata.CONTENT_MD5, fileMetadata.getMd5());
 
-        String[] parts = relativePath.split("/");
-        DateTime dateTime = new DateTime(new Date(Long.valueOf(parts[parts.length - 1].split("-")[1])));
+        String[] urlParts = relativePath.split("/");
+        String id = urlParts[urlParts.length - 1].split("\\.")[0];
+        String[] idParts = IdMaker.INSTANCE.split(id);
+        DateTime dateTime = new DateTime(new Date(Long.valueOf(idParts[3])));
         String lastModify = dateTime.toString(timePattern, Locale.US) + " GMT";
         response.setHeader(HttpHeaderNames.LAST_MODIFIED.toString(), lastModify);
         response.setHeader(CommonConstant.contentCrc32, String.valueOf(fileMetadata.getCrc32()));

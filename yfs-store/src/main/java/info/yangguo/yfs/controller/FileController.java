@@ -74,9 +74,9 @@ public class FileController extends BaseController {
     }
 
     @ApiOperation(value = "delete file")
-    @RequestMapping(value = "${yfs.group}/{first}/{second}/{name:.+}", method = {RequestMethod.DELETE})
+    @RequestMapping(value = "{first}/{second}/{name:.+}", method = {RequestMethod.DELETE})
     public void delete(@PathVariable String first, @PathVariable String second, @PathVariable String name, HttpServletResponse response) {
-        String path = clusterProperties.getGroup() + "/" + first + "/" + second + "/" + name;
+        String path = first + "/" + second + "/" + name;
         logger.info("delete file:{}", path);
         Result result = new Result();
         try {
@@ -96,9 +96,9 @@ public class FileController extends BaseController {
     }
 
     @ApiOperation(value = "data synchronization between nodes")
-    @RequestMapping(value = "${yfs.group}/{first}/{second}/{name:.+}", method = {RequestMethod.GET})
+    @RequestMapping(value = "{first}/{second}/{name:.+}", method = {RequestMethod.GET})
     public void download(@PathVariable String first, @PathVariable String second, @PathVariable String name, @RequestHeader(required = false) String range, HttpServletRequest request, HttpServletResponse response) {
-        String path = clusterProperties.getGroup() + File.separator + first + File.separator + second + File.separator + name;
+        String path = first + File.separator + second + File.separator + name;
         try {
             FileService.getFile(clusterProperties, path, request, response);
         } catch (Exception e) {

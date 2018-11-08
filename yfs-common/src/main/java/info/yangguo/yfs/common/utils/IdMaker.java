@@ -1,9 +1,8 @@
-package info.yangguo.yfs.service;
+package info.yangguo.yfs.common.utils;
 
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.stereotype.Component;
 
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -15,46 +14,25 @@ import java.util.regex.Pattern;
  * 2位: sequence序列号
  * 剩余位: 时间戳
  */
-public class IdMaker {
-    private final Logger logger = LoggerFactory.getLogger(this.getClass());
-    private static IdMaker idMaker = null;
-
+public enum IdMaker {
+    INSTANCE;
+    private static final Logger LOGGER = LoggerFactory.getLogger(IdMaker.class);
     private long timestamp = -1L;
-    private String groupId;
-    private String storeId;
     private long sequence = 0L;
 
-    private IdMaker() {
-    }
-
-
-    public IdMaker(String group, String store) {
+    public synchronized String next(String group, String store) {
+        String groupId;
+        String storeId;
         Matcher groupMatcher = Pattern.compile("group(\\d{2})$").matcher(group);
         Matcher storeMatcher = Pattern.compile("store(\\d{1})$").matcher(store);
         if (!groupMatcher.matches())
             throw new RuntimeException("group must match with group\\\\d{2}");
         else
-            this.groupId = groupMatcher.group(1);
+            groupId = groupMatcher.group(1);
         if (!storeMatcher.matches())
             throw new RuntimeException("store must match with store\\\\d{1}");
         else
-            this.storeId = storeMatcher.group(1);
-    }
-
-
-    public static IdMaker getInstance(String group, String store) {
-        if (idMaker == null) {
-            synchronized (IdMaker.class) {
-                if (idMaker == null) {
-                    idMaker = new IdMaker(group, store);
-                }
-            }
-        }
-        return idMaker;
-
-    }
-
-    public synchronized String next() {
+            storeId = storeMatcher.group(1);
         long now = System.currentTimeMillis();
         if (now > this.timestamp) {
             this.timestamp = now;
@@ -66,7 +44,7 @@ public class IdMaker {
                 this.sequence = 0L;
             }
         } else if (now < this.timestamp) {
-            logger.error("Clock is moving backwards. Rejecting requests until {}.", this.timestamp);
+            LOGGER.error("Clock is moving backwards. Rejecting requests until {}.", this.timestamp);
             throw new RuntimeException(String.format("Clock moved backwards. Refusing to create for %d milliseconds", this.timestamp - now));
         }
         String sequenceStr;
@@ -75,6 +53,15 @@ public class IdMaker {
         else
             sequenceStr = String.valueOf(sequence);
         return groupId + storeId + sequenceStr + timestamp;
+    }
+
+    public String[] split(String id) {
+        String[] parts = new String[4];
+        parts[0] = id.substring(0, 2);
+        parts[1] = id.substring(2, 3);
+        parts[2] = id.substring(3, 5);
+        parts[3] = id.substring(5);
+        return parts;
     }
 
     private long tilNextMillis(long timestamp) {
