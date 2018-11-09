@@ -114,12 +114,12 @@ public class FileService {
             }
             fileMetadata.setMd5(serverMd5);
 
-            if (commonsMultipartFile.getContentType() != null) {
-                fileMetadata.setType(commonsMultipartFile.getContentType());
-            } else {
-                try {
-                    fileMetadata.setType(getContentType(clusterProperties, fileMetadata).get(Metadata.CONTENT_TYPE));
-                } catch (Exception e) {
+            try {
+                fileMetadata.setType(getContentType(clusterProperties, fileMetadata).get(Metadata.CONTENT_TYPE));
+            } catch (Exception e) {
+                if (commonsMultipartFile.getContentType() != null) {
+                    fileMetadata.setType(commonsMultipartFile.getContentType());
+                } else {
                     fileMetadata.setType(MimeTypes.OCTET_STREAM);
                 }
             }
