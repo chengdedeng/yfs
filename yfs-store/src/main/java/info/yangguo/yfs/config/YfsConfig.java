@@ -200,7 +200,7 @@ public class YfsConfig {
                         logger.info("{} Event Info:\n{}",
                                 MapEvent.Type.INSERT.name(),
                                 JsonUtil.toJson(fileEvent1, true));
-                        syncFile(clusterProperties, fileEvent1.getAddNodes(), fileEvent1);
+                        syncFile(clusterProperties, fileEvent1);
                         updateAddNodes(clusterProperties, fileEvent1.getPath(), MapEvent.Type.INSERT.name());
                     }
                 case UPDATE:
@@ -216,7 +216,7 @@ public class YfsConfig {
                                 MapEvent.Type.UPDATE.name(),
                                 JsonUtil.toJson(fileEvent3, true),
                                 JsonUtil.toJson(fileEvent2, true));
-                        syncFile(clusterProperties, addNodes, fileEvent2);
+                        syncFile(clusterProperties, fileEvent2);
                         updateAddNodes(clusterProperties, fileEvent2.getPath(), MapEvent.Type.UPDATE.name());
                     } else if (removeNodes.size() > 0 && !removeNodes.contains(clusterProperties.getLocal())) {
                         FileEvent fileEvent3 = tmp3.value();
@@ -268,9 +268,14 @@ public class YfsConfig {
         return atomix;
     }
 
-
-    private void syncFile(ClusterProperties clusterProperties, List<String> addNodes, FileEvent fileEvent) {
-        for (String addNode : addNodes) {
+    /**
+     * 从别的store同步文件到当前store
+     *
+     * @param clusterProperties
+     * @param fileEvent
+     */
+    private void syncFile(ClusterProperties clusterProperties, FileEvent fileEvent) {
+        for (String addNode : fileEvent.getAddNodes()) {
             ClusterProperties.ClusterNode clusterNode = storeNodeMap.apply(clusterProperties).get(addNode);
             String url = "http://" + clusterNode.getIp() + ":" + clusterNode.getHttp_port() + "/" + fileEvent.getPath();
             HttpUriRequest httpUriRequest = new HttpGet(url);
