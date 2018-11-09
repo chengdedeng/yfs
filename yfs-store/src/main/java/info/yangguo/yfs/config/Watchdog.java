@@ -41,6 +41,11 @@ public class Watchdog {
     @Autowired
     private YfsConfig yfsConfig;
 
+    /**
+     * 定时检查AtomicMap中的文件本地是否已经同步，出现不同步的情况有：
+     * 1. 当前节点下线，再上线的时候，已经错过了部分文件的存储的event；
+     * 2. 节点在线的情况下，也有可能出现event丢失的情况。
+     */
     @Scheduled(initialDelayString = "${yfs.store.watchdog.initial_delay}", fixedDelayString = "${yfs.store.watchdog.fixed_delay}")
     public void watchFile() {
         Collection<Versioned<FileEvent>> metadata = yfsConfig.fileEventMap.values();
@@ -56,6 +61,9 @@ public class Watchdog {
         logger.debug("file**************************watchdog");
     }
 
+    /**
+     * 定时想Gateway上传存储节点信息，Gateway才能根据store的信息进行路由。
+     */
     @Scheduled(fixedRate = 5000)
     public void watchServer() {
         StringBuilder fileDir = new StringBuilder();
