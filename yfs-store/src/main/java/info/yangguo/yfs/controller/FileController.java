@@ -74,7 +74,7 @@ public class FileController extends BaseController {
     }
 
     @ApiOperation(value = "delete file")
-    @RequestMapping(value = "{first}/{second}/{name:.+}", method = {RequestMethod.DELETE})
+    @RequestMapping(value = "{first:\\w{1,3}}/{second:\\w{1,3}}/{name:.+}", method = {RequestMethod.DELETE})
     public void delete(@PathVariable String first, @PathVariable String second, @PathVariable String name, HttpServletResponse response) {
         String path = first + "/" + second + "/" + name;
         logger.info("delete file:{}", path);
@@ -96,7 +96,7 @@ public class FileController extends BaseController {
     }
 
     @ApiOperation(value = "data synchronization between nodes")
-    @RequestMapping(value = "{first}/{second}/{name:.+}", method = {RequestMethod.GET})
+    @RequestMapping(value = "{first:\\w{1,3}}/{second:\\w{1,3}}/{name:.+}", method = {RequestMethod.GET})
     public void download(@PathVariable String first, @PathVariable String second, @PathVariable String name, @RequestHeader(required = false) String range, HttpServletRequest request, HttpServletResponse response) {
         String path = first + File.separator + second + File.separator + name;
         try {

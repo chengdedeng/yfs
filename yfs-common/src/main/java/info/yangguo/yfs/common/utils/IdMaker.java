@@ -37,14 +37,14 @@ public enum IdMaker {
     public synchronized String next(String group, String store) {
         String groupId;
         String storeId;
-        Matcher groupMatcher = Pattern.compile("group(\\d{2})$").matcher(group);
-        Matcher storeMatcher = Pattern.compile("store(\\d{1})$").matcher(store);
+        Matcher groupMatcher = Pattern.compile("(\\d{2})$").matcher(group);
+        Matcher storeMatcher = Pattern.compile("(\\d{1})$").matcher(store);
         if (!groupMatcher.matches())
-            throw new RuntimeException("group must match with group\\\\d{2}");
+            throw new RuntimeException("group must match with \\d{2}");
         else
             groupId = groupMatcher.group(1);
         if (!storeMatcher.matches())
-            throw new RuntimeException("store must match with store\\\\d{1}");
+            throw new RuntimeException("store must match with \\d{1}");
         else
             storeId = storeMatcher.group(1);
         long now = System.currentTimeMillis();

@@ -200,8 +200,7 @@ public class YfsConfig {
                         logger.info("{} Event Info:\n{}",
                                 MapEvent.Type.INSERT.name(),
                                 JsonUtil.toJson(fileEvent1, true));
-                        syncFile(clusterProperties, fileEvent1);
-                        updateAddNodes(clusterProperties, fileEvent1.getPath(), MapEvent.Type.INSERT.name());
+                        syncFile(clusterProperties, fileEvent1, MapEvent.Type.INSERT);
                     }
                 case UPDATE:
                     Versioned<FileEvent> tmp2 = event.newValue();
@@ -216,8 +215,7 @@ public class YfsConfig {
                                 MapEvent.Type.UPDATE.name(),
                                 JsonUtil.toJson(fileEvent3, true),
                                 JsonUtil.toJson(fileEvent2, true));
-                        syncFile(clusterProperties, fileEvent2);
-                        updateAddNodes(clusterProperties, fileEvent2.getPath(), MapEvent.Type.UPDATE.name());
+                        syncFile(clusterProperties, fileEvent2, MapEvent.Type.UPDATE);
                     } else if (removeNodes.size() > 0 && !removeNodes.contains(clusterProperties.getLocal())) {
                         FileEvent fileEvent3 = tmp3.value();
                         logger.info("{} Event Info:\nOldValue:{}\nNewValue:{}",
@@ -273,8 +271,9 @@ public class YfsConfig {
      *
      * @param clusterProperties
      * @param fileEvent
+     * @param type
      */
-    private void syncFile(ClusterProperties clusterProperties, FileEvent fileEvent) {
+    private void syncFile(ClusterProperties clusterProperties, FileEvent fileEvent, MapEvent.Type type) {
         for (String addNode : fileEvent.getAddNodes()) {
             ClusterProperties.ClusterNode clusterNode = storeNodeMap.apply(clusterProperties).get(addNode);
             String url = "http://" + clusterNode.getIp() + ":" + clusterNode.getHttp_port() + "/" + fileEvent.getPath();
@@ -282,36 +281,20 @@ public class YfsConfig {
             String id = fileEvent.getPath();
             try {
                 HttpResponse response = httpClient.execute(httpUriRequest);
-                if (200 == response.getStatusLine().getStatusCode()) {
+                if (200 == response.getStatusLine().getStatusCode())
                     FileService.store(clusterProperties, id, response);
-                    logger.info("Sync Success:{}", id);
-                    break;
-                }
+                Versioned<FileEvent> tmp = fileEventMap.get(fileEvent.getPath());
+                long version = tmp.version();
+                fileEvent = tmp.value();
+                if (!fileEvent.getAddNodes().contains(clusterProperties.getLocal()))
+                    fileEvent.getAddNodes().add(clusterProperties.getLocal());
+                fileEventMap.replace(fileEvent.getPath(), version, fileEvent);
+                logger.info("Sync {} Success", id);
+                break;
             } catch (Exception e) {
-                logger.warn("Sync Failure:{}", id, e);
+                logger.warn("Sync {} Failure", id, e);
             }
         }
-    }
-
-    private boolean updateAddNodes(ClusterProperties clusterProperties, String key, String eventType) {
-        boolean result = false;
-        FileEvent fileEvent = null;
-        try {
-            Versioned<FileEvent> tmp = fileEventMap.get(key);
-            long version = tmp.version();
-            fileEvent = tmp.value();
-            if (!fileEvent.getAddNodes().contains(clusterProperties.getLocal())) {
-                fileEvent.getAddNodes().add(clusterProperties.getLocal());
-            }
-            result = fileEventMap.replace(key, version, fileEvent);
-        } catch (Exception e) {
-            logger.warn("{} UpdateAddNodes Failure:{}", eventType, key, e);
-        }
-        if (result == true) {
-            logger.info("{} UpdateAddNodes Info:{}", eventType, JsonUtil.toJson(fileEvent, true));
-            logger.info("{} UpdateAddNodes Success:{}", eventType, key);
-        }
-        return result;
     }
 
     private boolean updateRemoveNodes(ClusterProperties clusterProperties, String key) {

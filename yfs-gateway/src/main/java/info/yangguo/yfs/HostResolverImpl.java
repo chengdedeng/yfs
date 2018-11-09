@@ -68,7 +68,8 @@ public class HostResolverImpl implements HostResolver {
             server = uploadServers.getServer();
         } else {
             WeightedRoundRobinScheduling weightedRoundRobinScheduling = downloadServers.get(host);
-            server = weightedRoundRobinScheduling.getServer();
+            if (weightedRoundRobinScheduling != null)
+                server = weightedRoundRobinScheduling.getServer();
         }
         if (server != null) {
             return new InetSocketAddress(server.getStoreInfo().getIp(), server.getStoreInfo().getStoreHttpPort());

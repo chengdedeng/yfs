@@ -21,6 +21,9 @@ import io.netty.handler.codec.http.HttpObject;
 import io.netty.handler.codec.http.HttpRequest;
 import io.netty.handler.codec.http.HttpResponse;
 
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
 public class RewriteFilter implements RequestFilter {
     public HttpResponse doFilter(HttpRequest originalRequest, HttpObject httpObject) {
         if (httpObject instanceof HttpRequest) {
@@ -36,10 +39,14 @@ public class RewriteFilter implements RequestFilter {
                         || uri.contains("webjars")) {
                     ((HttpRequest) httpObject).setUri("http://upload" + uri);
                 } else {
-                    String[] uriParts = uri.split("/");
-                    String id = uriParts[uriParts.length - 1].split("\\.")[0];
-                    String[] idParts = IdMaker.INSTANCE.split(id);
-                    ((HttpRequest) httpObject).setUri("http://group" + idParts[0] + uri);
+                    Pattern pathPattern = Pattern.compile("/\\w{1,3}/\\w{1,3}/\\d{10,}(\\.\\w+)?+");
+                    Matcher matcher = pathPattern.matcher(uri);
+                    if (matcher.matches()) {
+                        String[] uriParts = uri.split("/");
+                        String id = uriParts[uriParts.length - 1].split("\\.")[0];
+                        String[] idParts = IdMaker.INSTANCE.split(id);
+                        ((HttpRequest) httpObject).setUri("http://" + idParts[0] + uri);
+                    }
                 }
             }
         }
