@@ -39,7 +39,7 @@ public class RewriteFilter implements RequestFilter {
                         || uri.contains("webjars")) {
                     ((HttpRequest) httpObject).setUri("http://upload" + uri);
                 } else {
-                    Pattern pathPattern = Pattern.compile("/\\w{1,3}/\\w{1,3}/\\d{10,}(\\.\\w+)?+");
+                    Pattern pathPattern = Pattern.compile("/\\w{1,3}/\\w{1,3}/\\d{10,}(\\.\\w+)*+");
                     Matcher matcher = pathPattern.matcher(uri);
                     if (matcher.matches()) {
                         String[] uriParts = uri.split("/");

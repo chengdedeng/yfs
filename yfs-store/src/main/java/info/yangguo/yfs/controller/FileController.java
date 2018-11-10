@@ -21,8 +21,8 @@ import info.yangguo.yfs.config.ClusterProperties;
 import info.yangguo.yfs.config.YfsConfig;
 import info.yangguo.yfs.dto.Result;
 import info.yangguo.yfs.dto.ResultCode;
-import info.yangguo.yfs.service.FileService;
 import info.yangguo.yfs.service.EventService;
+import info.yangguo.yfs.service.FileService;
 import io.atomix.utils.time.Versioned;
 import io.swagger.annotations.ApiOperation;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -73,7 +73,6 @@ public class FileController extends BaseController {
         return result;
     }
 
-    @ApiOperation(value = "delete file")
     @RequestMapping(value = "{first:\\w{1,3}}/{second:\\w{1,3}}/{name:.+}", method = {RequestMethod.DELETE})
     public void delete(@PathVariable String first, @PathVariable String second, @PathVariable String name, HttpServletResponse response) {
         String path = first + "/" + second + "/" + name;
@@ -95,7 +94,6 @@ public class FileController extends BaseController {
         outputResult(response, result);
     }
 
-    @ApiOperation(value = "data synchronization between nodes")
     @RequestMapping(value = "{first:\\w{1,3}}/{second:\\w{1,3}}/{name:.+}", method = {RequestMethod.GET})
     public void download(@PathVariable String first, @PathVariable String second, @PathVariable String name, @RequestHeader(required = false) String range, HttpServletRequest request, HttpServletResponse response) {
         String path = first + File.separator + second + File.separator + name;

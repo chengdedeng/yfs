@@ -16,11 +16,9 @@
 package info.yangguo.yfs.controller;
 
 import info.yangguo.yfs.common.po.FileEvent;
-import info.yangguo.yfs.config.ClusterProperties;
 import info.yangguo.yfs.config.YfsConfig;
 import info.yangguo.yfs.dto.Result;
 import info.yangguo.yfs.dto.ResultCode;
-import io.atomix.utils.time.Versioned;
 import io.swagger.annotations.ApiOperation;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Controller;
@@ -29,15 +27,11 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestMethod;
 import org.springframework.web.bind.annotation.ResponseBody;
 
-import javax.servlet.http.HttpServletResponse;
-import java.io.File;
 import java.util.HashSet;
 
 @Controller
-@RequestMapping(value = "${yfs.group}/admin")
+@RequestMapping(value = "admin/${yfs.group}")
 public class AdminController extends BaseController {
-    @Autowired
-    private ClusterProperties clusterProperties;
     @Autowired
     private YfsConfig yfsConfig;
 
@@ -71,29 +65,5 @@ public class AdminController extends BaseController {
             result.setValue(ResultCode.C500.getDesc());
         }
         return result;
-    }
-
-    @ApiOperation(value = "node sync one file")
-    @RequestMapping(value = "resync/{node}/{first}/{second}/{name:.+}", method = {RequestMethod.PUT})
-    public void resyncFile(@PathVariable String node, @PathVariable String first, @PathVariable String second, @PathVariable String name, HttpServletResponse response) {
-        Result result = new Result<>();
-        try {
-            String path = clusterProperties.getGroup() + File.separator + first + File.separator + second + File.separator + name;
-            Versioned<FileEvent> versioned = yfsConfig.fileEventMap.get(path);
-            if (versioned != null) {
-                long version = versioned.version();
-                FileEvent fileEvent = versioned.value();
-                fileEvent.getAddNodes().remove(node);
-                if (false == yfsConfig.fileEventMap.replace(path, version, fileEvent)) {
-                    result.setCode(ResultCode.C202.getCode());
-                } else {
-                    result.setCode(ResultCode.C200.getCode());
-                }
-            }
-        } catch (Exception e) {
-            result.setCode(ResultCode.C500.getCode());
-            result.setValue(ResultCode.C500.getDesc());
-        }
-        outputResult(response, result);
     }
 }
