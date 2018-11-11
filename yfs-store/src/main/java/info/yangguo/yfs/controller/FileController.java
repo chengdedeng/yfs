@@ -47,7 +47,6 @@ public class FileController extends BaseController {
     @ResponseBody
     @RequestMapping(value = "api/file", method = {RequestMethod.POST})
     public Result upload(MultipartFile file, HttpServletRequest httpServletRequest) {
-        logger.info("upload file:{}", file.getName());
         Result result = new Result();
         int qos = 2;
         FileEvent fileEvent = null;
@@ -61,8 +60,9 @@ public class FileController extends BaseController {
                 result.setCode(ResultCode.C202.code);
             }
             result.setValue(fileEvent.getPath());
+            logger.debug("Success to upload {}", fileEvent.getPath());
         } catch (Exception e) {
-            logger.error("upload api:{}", e);
+            logger.error("Upload", e);
             if (fileEvent != null)
                 FileService.delete(clusterProperties, fileEvent.getPath());
             result.setCode(ResultCode.C500.getCode());

@@ -29,6 +29,17 @@ import org.apache.commons.io.FileUtils;
 import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.fontbox.ttf.BufferedRandomAccessFile;
+import org.apache.http.HttpResponse;
+import org.apache.http.client.HttpClient;
+import org.apache.http.client.config.RequestConfig;
+import org.apache.http.client.methods.HttpGet;
+import org.apache.http.client.methods.HttpUriRequest;
+import org.apache.http.config.Registry;
+import org.apache.http.config.RegistryBuilder;
+import org.apache.http.conn.socket.ConnectionSocketFactory;
+import org.apache.http.conn.socket.PlainConnectionSocketFactory;
+import org.apache.http.impl.client.HttpClientBuilder;
+import org.apache.http.impl.conn.PoolingHttpClientConnectionManager;
 import org.apache.tika.metadata.Metadata;
 import org.apache.tika.mime.MimeTypes;
 import org.apache.tika.parser.AutoDetectParser;
@@ -54,6 +65,25 @@ public class FileService {
     private static Logger logger = LoggerFactory.getLogger(FileService.class);
     private static Map<String, Long> runningFile = new ConcurrentHashMap<>();
     private static String timePattern = "EEE, dd MMM yyyy HH:mm:ss";
+    private static HttpClient httpClient;
+
+    static {
+        Registry<ConnectionSocketFactory> registry = RegistryBuilder.<ConnectionSocketFactory>create()
+                .register("http", PlainConnectionSocketFactory.getSocketFactory())
+                .build();
+        PoolingHttpClientConnectionManager connectionManager = new PoolingHttpClientConnectionManager(registry);
+        connectionManager.setMaxTotal(1000);
+        connectionManager.setDefaultMaxPerRoute(1000);
+
+        RequestConfig requestConfig = RequestConfig.custom()
+                .build();
+
+        httpClient = HttpClientBuilder.create()
+                .setDefaultRequestConfig(requestConfig)
+                .setConnectionManager(connectionManager)
+                .build();
+    }
+
     /**
      * 获取文件扩展名
      */
@@ -132,6 +162,46 @@ public class FileService {
         return fileEvent;
     }
 
+
+    /**
+     * 同步时文件存储方法
+     *
+     * @param clusterProperties
+     * @param relativePath
+     * @param fileUrl
+     * @param crc32
+     */
+    public static void store(ClusterProperties clusterProperties, String relativePath, String fileUrl, String crc32) throws IOException {
+        String fullPath = getPath(clusterProperties, relativePath);
+
+        if (runningFile.putIfAbsent(fullPath, new Date().getTime()) == null) {
+            try {
+                File file = new File(fullPath);
+                if (file.exists()) {
+                    if (crc32.equals(String.valueOf(FileUtils.checksumCRC32(new File(fullPath))))) {
+                        return;
+                    }
+                }
+                HttpUriRequest fileRequest = new HttpGet(fileUrl);
+                HttpResponse fileResponse = httpClient.execute(fileRequest);
+                if (200 == fileResponse.getStatusLine().getStatusCode()) {
+                    if (!crc32.equals(store(clusterProperties, relativePath, fileResponse.getEntity().getContent()))) {
+                        throw new RuntimeException("File[" + relativePath + "]'s crc32 doesn't match");
+                    }
+                    logger.debug("Success to store {}", relativePath);
+                } else {
+                    throw new RuntimeException("Failed to get file " + relativePath);
+                }
+            } catch (Exception e) {
+                throw e;
+            } finally {
+                runningFile.remove(fullPath);
+            }
+        } else {
+            logger.debug("{} in sync", fullPath);
+        }
+    }
+
     /**
      * 存储文件的底层方法
      *
@@ -141,32 +211,19 @@ public class FileService {
      * @throws Exception
      */
     public static String store(ClusterProperties clusterProperties, String relativePath, InputStream inputStream) throws IOException {
-        String fileCrc32 = null;
         String fullPath = getPath(clusterProperties, relativePath);
         File file = new File(fullPath);
-        if (runningFile.putIfAbsent(fullPath, new Date().getTime()) == null) {
-            try {
-                if (file.exists()) {
-                    file.delete();
-                    //赋予新的iNode
-                    file = new File(fullPath);
-                }
-                try {
-                    FileUtils.copyInputStreamToFile(inputStream, file);
-                } finally {
-                    IOUtils.closeQuietly(inputStream);
-                }
-                fileCrc32 = String.valueOf(FileUtils.checksumCRC32(new File(fullPath)));
-            } catch (IOException e) {
-                throw e;
-            } finally {
-                Long begin = runningFile.remove(fullPath);
-                logger.info("File[{}] time consuming:{}", fullPath, new Date().getTime() - begin);
-            }
-        } else {
-            logger.warn("{} in sync", fullPath);
+        if (file.exists()) {
+            file.delete();
+            //赋予新的iNode
+            file = new File(fullPath);
         }
-        return fileCrc32;
+        try {
+            FileUtils.copyInputStreamToFile(inputStream, file);
+        } finally {
+            IOUtils.closeQuietly(inputStream);
+        }
+        return String.valueOf(FileUtils.checksumCRC32(new File(fullPath)));
     }
 
     /**
@@ -177,28 +234,15 @@ public class FileService {
      * @throws IOException
      */
     private static String storeMetadata(ClusterProperties clusterProperties, FileMetadata fileMetadata) throws IOException {
-        String metaCrc32 = null;
         String fullPath = getMetadataPath(clusterProperties, fileMetadata.getPath());
         File file = new File(fullPath);
-        if (runningFile.putIfAbsent(fullPath, new Date().getTime()) == null) {
-            try {
-                if (file.exists()) {
-                    file.delete();
-                    //赋予新的iNode
-                    file = new File(fullPath);
-                }
-                FileUtils.write(file, JsonUtil.toJson(fileMetadata, false));
-                metaCrc32 = String.valueOf(FileUtils.checksumCRC32(new File(fullPath)));
-            } catch (IOException e) {
-                throw e;
-            } finally {
-                Long begin = runningFile.remove(fullPath);
-                logger.info("File[{}] time consuming:{}", fullPath, new Date().getTime() - begin);
-            }
-        } else {
-            logger.warn("{} in sync", fullPath);
+        if (file.exists()) {
+            file.delete();
+            //赋予新的iNode
+            file = new File(fullPath);
         }
-        return metaCrc32;
+        FileUtils.write(file, JsonUtil.toJson(fileMetadata, false));
+        return String.valueOf(FileUtils.checksumCRC32(new File(fullPath)));
     }
 
     /**

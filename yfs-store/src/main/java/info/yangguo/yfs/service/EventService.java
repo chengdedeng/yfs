@@ -35,11 +35,12 @@ public class EventService {
         try {
             yfsConfig.cache.put(fileEvent.getPath(), countDownLatch);
             yfsConfig.fileEventMap.put(fileEvent.getPath(), fileEvent);
+            LOGGER.debug("Success to create event of {}", fileEvent.getPath());
             //Preventing network traffic from failing
             countDownLatch.countDown();
             result = countDownLatch.await(clusterProperties.getStore().getQos_max_time(), TimeUnit.SECONDS);
         } catch (InterruptedException e) {
-            LOGGER.warn("QOS of {} is fail!", fileEvent.getPath());
+            LOGGER.warn("Qos of {} is fail!", fileEvent.getPath());
         } finally {
             yfsConfig.cache.invalidate(fileEvent.getPath());
         }

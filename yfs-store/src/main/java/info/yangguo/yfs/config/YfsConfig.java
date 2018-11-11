@@ -37,17 +37,6 @@ import io.atomix.protocols.raft.partition.RaftPartitionGroup;
 import io.atomix.storage.StorageLevel;
 import io.atomix.utils.time.Versioned;
 import org.apache.commons.io.FileUtils;
-import org.apache.http.HttpResponse;
-import org.apache.http.client.HttpClient;
-import org.apache.http.client.config.RequestConfig;
-import org.apache.http.client.methods.HttpGet;
-import org.apache.http.client.methods.HttpUriRequest;
-import org.apache.http.config.Registry;
-import org.apache.http.config.RegistryBuilder;
-import org.apache.http.conn.socket.ConnectionSocketFactory;
-import org.apache.http.conn.socket.PlainConnectionSocketFactory;
-import org.apache.http.impl.client.HttpClientBuilder;
-import org.apache.http.impl.conn.PoolingHttpClientConnectionManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -67,7 +56,6 @@ public class YfsConfig {
     private static Logger logger = LoggerFactory.getLogger(YfsConfig.class);
     public AtomicMap<String, FileEvent> fileEventMap = null;
     public AtomicMap<String, StoreInfo> storeInfoMap = null;
-    private HttpClient httpClient;
     public Cache<String, CountDownLatch> cache;
     @Autowired
     private ClusterProperties clusterProperties;
@@ -145,21 +133,6 @@ public class YfsConfig {
     };
 
     public YfsConfig() {
-        Registry<ConnectionSocketFactory> registry = RegistryBuilder.<ConnectionSocketFactory>create()
-                .register("http", PlainConnectionSocketFactory.getSocketFactory())
-                .build();
-        PoolingHttpClientConnectionManager connectionManager = new PoolingHttpClientConnectionManager(registry);
-        connectionManager.setMaxTotal(1000);
-        connectionManager.setDefaultMaxPerRoute(1000);
-
-        RequestConfig requestConfig = RequestConfig.custom()
-                .build();
-
-        this.httpClient = HttpClientBuilder.create()
-                .setDefaultRequestConfig(requestConfig)
-                .setConnectionManager(connectionManager)
-                .build();
-
         this.cache = CacheBuilder.newBuilder()
                 .maximumSize(100000)
                 .removalListener(new RemovalListener() {
@@ -277,38 +250,21 @@ public class YfsConfig {
         for (String addNode : fileEvent.getAddNodes()) {
             ClusterProperties.ClusterNode clusterNode = storeNodeMap.apply(clusterProperties).get(addNode);
             String fileUrl = "http://" + clusterNode.getIp() + ":" + clusterNode.getHttp_port() + "/" + fileEvent.getPath();
-            String metaUrl = "http://" + clusterNode.getIp() + ":" + clusterNode.getHttp_port() + "/" + fileEvent.getPath() + ".meta";
-            HttpUriRequest fileRequest = new HttpGet(fileUrl);
-            HttpUriRequest metaRequest = new HttpGet(metaUrl);
+            String metaUrl = fileUrl + ".meta";
             String fileRelativePath = fileEvent.getPath();
             String metaRelativePath = fileRelativePath + ".meta";
             try {
-                HttpResponse fileResponse = httpClient.execute(fileRequest);
-                if (200 == fileResponse.getStatusLine().getStatusCode()) {
-                    if (fileEvent.getFileCrc32().equals(FileService.store(clusterProperties, fileRelativePath, fileResponse.getEntity().getContent()))) {
-                        HttpResponse metaResponse = httpClient.execute(metaRequest);
-                        if (200 == metaResponse.getStatusLine().getStatusCode()) {
-                            if (!fileEvent.getMetaCrc32().equals(FileService.store(clusterProperties, metaRelativePath, metaResponse.getEntity().getContent()))) {
-                                throw new RuntimeException("File " + metaRelativePath + " crc32 doesn't match");
-                            }
-                        } else {
-                            throw new RuntimeException("Failed to get file " + metaRelativePath);
-                        }
-                    } else {
-                        throw new RuntimeException("File " + fileRelativePath + " crc32 doesn't match");
-                    }
-                    Versioned<FileEvent> tmp = fileEventMap.get(fileEvent.getPath());
-                    long version = tmp.version();
-                    fileEvent = tmp.value();
-                    if (!fileEvent.getAddNodes().contains(clusterProperties.getLocal())) {
-                        fileEvent.getAddNodes().add(clusterProperties.getLocal());
-                        fileEventMap.replace(fileEvent.getPath(), version, fileEvent);
-                    }
-                    logger.info("Sync {} success", fileRelativePath);
-                    break;
-                } else {
-                    logger.warn("Failed to sync {}", fileEvent.getPath());
+                FileService.store(clusterProperties, fileRelativePath, fileUrl, fileEvent.getFileCrc32());
+                FileService.store(clusterProperties, metaRelativePath, metaUrl, fileEvent.getMetaCrc32());
+                Versioned<FileEvent> tmp = fileEventMap.get(fileEvent.getPath());
+                long version = tmp.version();
+                fileEvent = tmp.value();
+                if (!fileEvent.getAddNodes().contains(clusterProperties.getLocal())) {
+                    fileEvent.getAddNodes().add(clusterProperties.getLocal());
+                    if (fileEventMap.replace(fileEvent.getPath(), version, fileEvent))
+                        logger.debug("Success to replace event when sync file {}", fileEvent.getPath());
                 }
+                break;
             } catch (Exception e) {
                 FileService.delete(clusterProperties, fileEvent.getPath());
                 logger.warn("Failed to sync {}", fileRelativePath, e);
