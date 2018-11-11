@@ -17,6 +17,7 @@ package info.yangguo.yfs.service;
 
 import com.google.common.collect.Maps;
 import info.yangguo.yfs.common.CommonConstant;
+import info.yangguo.yfs.common.po.FileEvent;
 import info.yangguo.yfs.common.po.FileMetadata;
 import info.yangguo.yfs.common.utils.IdMaker;
 import info.yangguo.yfs.common.utils.JsonUtil;
@@ -28,8 +29,6 @@ import org.apache.commons.io.FileUtils;
 import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.fontbox.ttf.BufferedRandomAccessFile;
-import org.apache.http.Header;
-import org.apache.http.HttpResponse;
 import org.apache.tika.metadata.Metadata;
 import org.apache.tika.mime.MimeTypes;
 import org.apache.tika.parser.AutoDetectParser;
@@ -40,14 +39,12 @@ import org.joda.time.DateTime;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
-import org.springframework.util.MimeType;
 import org.springframework.util.MimeTypeUtils;
 import org.springframework.web.multipart.commons.CommonsMultipartFile;
 
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 import java.io.*;
-import java.net.URLDecoder;
 import java.net.URLEncoder;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
@@ -69,7 +66,7 @@ public class FileService {
     };
 
     /**
-     * 用户上传时的存储方法
+     * 用户上传时文件的存储方法
      *
      * @param clusterProperties
      * @param commonsMultipartFile
@@ -77,20 +74,22 @@ public class FileService {
      * @return
      * @throws IOException
      */
-    public static FileMetadata store(ClusterProperties clusterProperties, CommonsMultipartFile commonsMultipartFile, HttpServletRequest httpServletRequest) throws IOException {
+    public static FileEvent store(ClusterProperties clusterProperties, CommonsMultipartFile commonsMultipartFile, HttpServletRequest httpServletRequest) throws IOException {
+        FileEvent fileEvent = new FileEvent();
         Integer block1 = new Random().nextInt(clusterProperties.getStore().getFiledata().getPartition()) + 1;
         Integer block2 = new Random().nextInt(clusterProperties.getStore().getFiledata().getPartition()) + 1;
         String newName = IdMaker.INSTANCE.next(clusterProperties.getGroup(), clusterProperties.getLocal());
         String fileName = commonsMultipartFile.getOriginalFilename();
         String exFileName = getExFileName.apply(fileName);
-        String filePath = null;
+        String relativePath = null;
         if (exFileName != null)
-            filePath = Integer.toHexString(block1) + File.separator + Integer.toHexString(block2) + File.separator + newName + "." + exFileName;
+            relativePath = Integer.toHexString(block1) + File.separator + Integer.toHexString(block2) + File.separator + newName + "." + exFileName;
         else
-            filePath = Integer.toHexString(block1) + File.separator + Integer.toHexString(block2) + File.separator + newName;
+            relativePath = Integer.toHexString(block1) + File.separator + Integer.toHexString(block2) + File.separator + newName;
+        fileEvent.setPath(relativePath);
 
         FileMetadata fileMetadata = new FileMetadata();
-        fileMetadata.setPath(filePath);
+        fileMetadata.setPath(relativePath);
         fileMetadata.setName(fileName);
         fileMetadata.setSize(String.valueOf(commonsMultipartFile.getSize()));
 
@@ -106,7 +105,7 @@ public class FileService {
         fileMetadata.setExtension(userMetadata);
 
         try {
-            store(clusterProperties, fileMetadata, commonsMultipartFile.getInputStream());
+            fileEvent.setFileCrc32(store(clusterProperties, relativePath, commonsMultipartFile.getInputStream()));
             String serverMd5 = verifyFileByMd5(clusterProperties, fileMetadata);
             String clientMd5 = httpServletRequest.getHeader(HttpHeaderNames.CONTENT_MD5.toString());
             if (clientMd5 != null) {
@@ -125,124 +124,81 @@ public class FileService {
                     fileMetadata.setType(MimeTypes.OCTET_STREAM);
                 }
             }
-            storeMetadata(clusterProperties, fileMetadata);
+            fileEvent.setMetaCrc32(storeMetadata(clusterProperties, fileMetadata));
         } catch (IOException e) {
             delete(clusterProperties, fileMetadata.getPath());
             throw e;
         }
-        return fileMetadata;
+        return fileEvent;
     }
 
     /**
-     * 同步文件时的存储方法
+     * 存储文件的底层方法
      *
      * @param clusterProperties
-     * @param path
-     * @param httpResponse
-     * @throws Exception
-     */
-    public static void store(ClusterProperties clusterProperties, String path, HttpResponse httpResponse) throws IOException {
-        try {
-            String contentType = httpResponse.getHeaders(Metadata.CONTENT_TYPE)[0].getValue();
-            String contentMd5 = httpResponse.getHeaders(Metadata.CONTENT_MD5)[0].getValue();
-            String crc32 = httpResponse.getHeaders(CommonConstant.contentCrc32)[0].getValue();
-            String fileName = URLDecoder.decode(httpResponse.getHeaders(CommonConstant.fileName)[0].getValue(), "UTF-8");
-            //同步不会涉及到断点下载，所以直接可以获取到content length
-            String contentlength = httpResponse.getHeaders(Metadata.CONTENT_LENGTH)[0].getValue();
-            Map<String, String> metadata = Maps.newHashMap();
-            for (Header header : httpResponse.getAllHeaders()) {
-                if (header.getName().startsWith(CommonConstant.xHeaderPrefix)) {
-                    metadata.put(header.getName(), header.getValue());
-                }
-            }
-            FileMetadata fileMetadata = FileMetadata.builder()
-                    .path(path)
-                    .type(contentType)
-                    .md5(contentMd5)
-                    .crc32(crc32)
-                    .name(fileName)
-                    .size(contentlength)
-                    .extension(metadata).build();
-            store(clusterProperties, fileMetadata, httpResponse.getEntity().getContent());
-            storeMetadata(clusterProperties, fileMetadata);
-        } catch (IOException e) {
-            delete(clusterProperties, path);
-            throw e;
-        }
-    }
-
-    /**
-     * 存储上传文件的底层方法
-     *
-     * @param clusterProperties
-     * @param fileMetadata
+     * @param relativePath
      * @param inputStream
      * @throws Exception
      */
-    private static void store(ClusterProperties clusterProperties, FileMetadata fileMetadata, InputStream inputStream) throws IOException {
-        String filePath = getPath(clusterProperties, fileMetadata.getPath());
-        File file = new File(filePath);
-        if (runningFile.putIfAbsent(filePath, new Date().getTime()) == null) {
+    public static String store(ClusterProperties clusterProperties, String relativePath, InputStream inputStream) throws IOException {
+        String fileCrc32 = null;
+        String fullPath = getPath(clusterProperties, relativePath);
+        File file = new File(fullPath);
+        if (runningFile.putIfAbsent(fullPath, new Date().getTime()) == null) {
             try {
                 if (file.exists()) {
                     file.delete();
                     //赋予新的iNode
-                    file = new File(filePath);
+                    file = new File(fullPath);
                 }
                 try {
                     FileUtils.copyInputStreamToFile(inputStream, file);
                 } finally {
                     IOUtils.closeQuietly(inputStream);
                 }
-                String crc32 = verifyFileByCrc32(clusterProperties, fileMetadata);
-                if (fileMetadata.getCrc32() != null) {
-                    if (!fileMetadata.getCrc32().equals(crc32)) {
-                        throw new IOException("crc32 does't match");
-                    }
-                } else {
-                    fileMetadata.setCrc32(crc32);
-                }
+                fileCrc32 = String.valueOf(FileUtils.checksumCRC32(new File(fullPath)));
             } catch (IOException e) {
-                file.delete();
                 throw e;
             } finally {
-                Long begin = runningFile.remove(filePath);
-                logger.info("File[{}] Time Consuming:{}", filePath, new Date().getTime() - begin);
+                Long begin = runningFile.remove(fullPath);
+                logger.info("File[{}] time consuming:{}", fullPath, new Date().getTime() - begin);
             }
         } else {
-            logger.warn("{} In Sync", filePath);
+            logger.warn("{} in sync", fullPath);
         }
+        return fileCrc32;
     }
 
     /**
-     * 存储文件metadata的方法
+     * 文件上传时metadata的存储方法
      *
      * @param clusterProperties
      * @param fileMetadata
      * @throws IOException
      */
-    private static void storeMetadata(ClusterProperties clusterProperties, FileMetadata fileMetadata) throws IOException {
-        String metadataPath = getMetadataPath(clusterProperties, fileMetadata.getPath());
-        File file = new File(metadataPath);
-        if (runningFile.putIfAbsent(metadataPath, new Date().getTime()) == null) {
+    private static String storeMetadata(ClusterProperties clusterProperties, FileMetadata fileMetadata) throws IOException {
+        String metaCrc32 = null;
+        String fullPath = getMetadataPath(clusterProperties, fileMetadata.getPath());
+        File file = new File(fullPath);
+        if (runningFile.putIfAbsent(fullPath, new Date().getTime()) == null) {
             try {
                 if (file.exists()) {
                     file.delete();
                     //赋予新的iNode
-                    file = new File(metadataPath);
+                    file = new File(fullPath);
                 }
                 FileUtils.write(file, JsonUtil.toJson(fileMetadata, false));
+                metaCrc32 = String.valueOf(FileUtils.checksumCRC32(new File(fullPath)));
             } catch (IOException e) {
-                if (file.exists())
-                    file.delete();
                 throw e;
             } finally {
-                Long begin = runningFile.remove(metadataPath);
-                logger.info("File[{}] Time Consuming:{}", metadataPath, new Date().getTime() - begin);
+                Long begin = runningFile.remove(fullPath);
+                logger.info("File[{}] time consuming:{}", fullPath, new Date().getTime() - begin);
             }
         } else {
-            logger.warn("{} In Sync", metadataPath);
+            logger.warn("{} in sync", fullPath);
         }
+        return metaCrc32;
     }
 
     /**
@@ -282,7 +238,6 @@ public class FileService {
             DateTime dateTime = new DateTime(new Date(Long.valueOf(idParts[3])));
             String lastModify = dateTime.toString(timePattern, Locale.US) + " GMT";
             response.setHeader(HttpHeaderNames.LAST_MODIFIED.toString(), lastModify);
-            response.setHeader(CommonConstant.contentCrc32, String.valueOf(fileMetadata.getCrc32()));
             response.setHeader(CommonConstant.fileName, URLEncoder.encode(fileMetadata.getName(), "UTF-8"));
             for (Map.Entry<String, String> entry : fileMetadata.getExtension().entrySet()) {
                 response.setHeader(entry.getKey(), entry.getValue());
@@ -376,7 +331,7 @@ public class FileService {
         if (file.exists())
             file.delete();
         File metadataFile = new File(metadataPath);
-        if (file.exists())
+        if (metadataFile.exists())
             metadataFile.delete();
     }
 
@@ -440,19 +395,6 @@ public class FileService {
             String md5 = DigestUtils.md5Hex(fileInputStream);
             return md5;
         }
-    }
-
-    /**
-     * 获取文件的CRC32值
-     *
-     * @param clusterProperties
-     * @param fileMetadata
-     * @return
-     * @throws IOException
-     */
-    public static String verifyFileByCrc32(ClusterProperties clusterProperties, FileMetadata fileMetadata) throws IOException {
-        String filePath = getPath(clusterProperties, fileMetadata.getPath());
-        return String.valueOf(FileUtils.checksumCRC32(new File(filePath)));
     }
 
     /**

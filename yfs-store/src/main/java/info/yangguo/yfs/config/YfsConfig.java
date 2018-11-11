@@ -276,23 +276,42 @@ public class YfsConfig {
     private void syncFile(ClusterProperties clusterProperties, FileEvent fileEvent, MapEvent.Type type) {
         for (String addNode : fileEvent.getAddNodes()) {
             ClusterProperties.ClusterNode clusterNode = storeNodeMap.apply(clusterProperties).get(addNode);
-            String url = "http://" + clusterNode.getIp() + ":" + clusterNode.getHttp_port() + "/" + fileEvent.getPath();
-            HttpUriRequest httpUriRequest = new HttpGet(url);
-            String id = fileEvent.getPath();
+            String fileUrl = "http://" + clusterNode.getIp() + ":" + clusterNode.getHttp_port() + "/" + fileEvent.getPath();
+            String metaUrl = "http://" + clusterNode.getIp() + ":" + clusterNode.getHttp_port() + "/" + fileEvent.getPath() + ".meta";
+            HttpUriRequest fileRequest = new HttpGet(fileUrl);
+            HttpUriRequest metaRequest = new HttpGet(metaUrl);
+            String fileRelativePath = fileEvent.getPath();
+            String metaRelativePath = fileRelativePath + ".meta";
             try {
-                HttpResponse response = httpClient.execute(httpUriRequest);
-                if (200 == response.getStatusLine().getStatusCode())
-                    FileService.store(clusterProperties, id, response);
-                Versioned<FileEvent> tmp = fileEventMap.get(fileEvent.getPath());
-                long version = tmp.version();
-                fileEvent = tmp.value();
-                if (!fileEvent.getAddNodes().contains(clusterProperties.getLocal()))
-                    fileEvent.getAddNodes().add(clusterProperties.getLocal());
-                fileEventMap.replace(fileEvent.getPath(), version, fileEvent);
-                logger.info("Sync {} Success", id);
-                break;
+                HttpResponse fileResponse = httpClient.execute(fileRequest);
+                if (200 == fileResponse.getStatusLine().getStatusCode()) {
+                    if (fileEvent.getFileCrc32().equals(FileService.store(clusterProperties, fileRelativePath, fileResponse.getEntity().getContent()))) {
+                        HttpResponse metaResponse = httpClient.execute(metaRequest);
+                        if (200 == metaResponse.getStatusLine().getStatusCode()) {
+                            if (!fileEvent.getMetaCrc32().equals(FileService.store(clusterProperties, metaRelativePath, metaResponse.getEntity().getContent()))) {
+                                throw new RuntimeException("File " + metaRelativePath + " crc32 doesn't match");
+                            }
+                        } else {
+                            throw new RuntimeException("Failed to get file " + metaRelativePath);
+                        }
+                    } else {
+                        throw new RuntimeException("File " + fileRelativePath + " crc32 doesn't match");
+                    }
+                    Versioned<FileEvent> tmp = fileEventMap.get(fileEvent.getPath());
+                    long version = tmp.version();
+                    fileEvent = tmp.value();
+                    if (!fileEvent.getAddNodes().contains(clusterProperties.getLocal())) {
+                        fileEvent.getAddNodes().add(clusterProperties.getLocal());
+                        fileEventMap.replace(fileEvent.getPath(), version, fileEvent);
+                    }
+                    logger.info("Sync {} success", fileRelativePath);
+                    break;
+                } else {
+                    logger.warn("Failed to sync {}", fileEvent.getPath());
+                }
             } catch (Exception e) {
-                logger.warn("Sync {} Failure", id, e);
+                FileService.delete(clusterProperties, fileEvent.getPath());
+                logger.warn("Failed to sync {}", fileRelativePath, e);
             }
         }
     }

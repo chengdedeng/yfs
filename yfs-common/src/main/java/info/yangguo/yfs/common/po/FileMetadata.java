@@ -31,10 +31,6 @@ public class FileMetadata {
      */
     private String md5;
     /**
-     * checksum by crc32
-     */
-    private String crc32;
-    /**
      * extension metadata by user
      */
     private Map<String, String> extension;

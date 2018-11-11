@@ -16,7 +16,6 @@
 package info.yangguo.yfs.controller;
 
 import info.yangguo.yfs.common.po.FileEvent;
-import info.yangguo.yfs.common.po.FileMetadata;
 import info.yangguo.yfs.config.ClusterProperties;
 import info.yangguo.yfs.config.YfsConfig;
 import info.yangguo.yfs.dto.Result;
@@ -50,23 +49,22 @@ public class FileController extends BaseController {
     public Result upload(MultipartFile file, HttpServletRequest httpServletRequest) {
         logger.info("upload file:{}", file.getName());
         Result result = new Result();
-        FileMetadata fileMetadata = null;
         int qos = 2;
+        FileEvent fileEvent = null;
         try {
             CommonsMultipartFile commonsMultipartFile = (CommonsMultipartFile) file;
-            fileMetadata = FileService.store(clusterProperties, commonsMultipartFile, httpServletRequest);
-            boolean qosResult = EventService.create(clusterProperties, yfsConfig, fileMetadata.getPath(), qos);
+            fileEvent = FileService.store(clusterProperties, commonsMultipartFile, httpServletRequest);
+            boolean qosResult = EventService.create(clusterProperties, yfsConfig, fileEvent, qos);
             if (qosResult == true) {
                 result.setCode(ResultCode.C200.code);
             } else {
                 result.setCode(ResultCode.C202.code);
             }
-            result.setValue(fileMetadata.getPath());
+            result.setValue(fileEvent.getPath());
         } catch (Exception e) {
             logger.error("upload api:{}", e);
-            if (fileMetadata != null) {
-                FileService.delete(clusterProperties, fileMetadata.getPath());
-            }
+            if (fileEvent != null)
+                FileService.delete(clusterProperties, fileEvent.getPath());
             result.setCode(ResultCode.C500.getCode());
             result.setValue(ResultCode.C500.getDesc());
         }

@@ -28,20 +28,18 @@ import java.util.concurrent.TimeUnit;
 public class EventService {
     private static Logger LOGGER = LoggerFactory.getLogger(EventService.class);
 
-    public static boolean create(ClusterProperties clusterProperties, YfsConfig yfsConfig, String path, int qos) {
+    public static boolean create(ClusterProperties clusterProperties, YfsConfig yfsConfig, FileEvent fileEvent, int qos) {
         boolean result = false;
-        FileEvent fileEvent = new FileEvent();
-        fileEvent.setPath(path);
         fileEvent.getAddNodes().add(clusterProperties.getLocal());
         CountDownLatch countDownLatch = new CountDownLatch(qos);
-        yfsConfig.cache.put(fileEvent.getPath(), countDownLatch);
-        yfsConfig.fileEventMap.put(fileEvent.getPath(), fileEvent);
-        //Preventing network traffic from failing
-        countDownLatch.countDown();
         try {
+            yfsConfig.cache.put(fileEvent.getPath(), countDownLatch);
+            yfsConfig.fileEventMap.put(fileEvent.getPath(), fileEvent);
+            //Preventing network traffic from failing
+            countDownLatch.countDown();
             result = countDownLatch.await(clusterProperties.getStore().getQos_max_time(), TimeUnit.SECONDS);
         } catch (InterruptedException e) {
-            LOGGER.warn("{} QOS fail!", fileEvent);
+            LOGGER.warn("QOS of {} is fail!", fileEvent.getPath());
         } finally {
             yfsConfig.cache.invalidate(fileEvent.getPath());
         }
