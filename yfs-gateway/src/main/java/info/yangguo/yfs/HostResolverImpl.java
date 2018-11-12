@@ -15,6 +15,7 @@
  */
 package info.yangguo.yfs;
 
+import info.yangguo.yfs.common.utils.IdMaker;
 import info.yangguo.yfs.config.ClusterConfig;
 import info.yangguo.yfs.util.WeightedRoundRobinScheduling;
 import lombok.Getter;
@@ -23,6 +24,7 @@ import org.littleshoot.proxy.HostResolver;
 
 import java.net.InetSocketAddress;
 import java.net.UnknownHostException;
+import java.util.Date;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -66,10 +68,25 @@ public class HostResolverImpl implements HostResolver {
         WeightedRoundRobinScheduling.Server server = null;
         if (host.equals("upload")) {
             server = uploadServers.getServer();
-        } else {
-            WeightedRoundRobinScheduling weightedRoundRobinScheduling = downloadServers.get(host);
-            if (weightedRoundRobinScheduling != null)
-                server = weightedRoundRobinScheduling.getServer();
+        } else if (!host.equals("unknown")) {
+            String[] hostParts = host.split("-");
+            WeightedRoundRobinScheduling weightedRoundRobinScheduling = downloadServers.get(hostParts[0]);
+            if (weightedRoundRobinScheduling != null) {
+                if (hostParts.length == 1) {
+                    server = weightedRoundRobinScheduling.getServer();
+                } else if (hostParts.length == 2) {
+                    for (WeightedRoundRobinScheduling.Server tmp : weightedRoundRobinScheduling.healthilyServers) {
+                        if (tmp.getStoreInfo().getNodeId().equals(hostParts[1])) {
+                            server = tmp;
+                            break;
+                        }
+                    }
+                    //这样做的目的是防止首次上传节点宕机，在sticky时间内，没服务提供者。
+                    if (server == null) {
+                        server = weightedRoundRobinScheduling.getServer();
+                    }
+                }
+            }
         }
         if (server != null) {
             return new InetSocketAddress(server.getStoreInfo().getIp(), server.getStoreInfo().getStoreHttpPort());

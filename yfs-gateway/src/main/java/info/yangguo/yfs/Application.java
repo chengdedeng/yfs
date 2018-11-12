@@ -87,7 +87,7 @@ public class Application {
                 .withFiltersSource(new HttpFiltersSourceAdapter() {
                     @Override
                     public HttpFilters filterRequest(HttpRequest originalRequest, ChannelHandlerContext ctx) {
-                        return new HttpFilterAdapterImpl(originalRequest, ctx, watchdog);
+                        return new HttpFilterAdapterImpl(originalRequest, ctx, watchdog, clusterConfig);
                     }
                 })
                 .start();

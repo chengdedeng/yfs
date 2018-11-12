@@ -16,6 +16,7 @@
 package info.yangguo.yfs;
 
 import com.google.common.collect.Lists;
+import info.yangguo.yfs.config.ClusterConfig;
 import info.yangguo.yfs.config.Watchdog;
 import info.yangguo.yfs.request.RequestFilter;
 import info.yangguo.yfs.request.RewriteFilter;
@@ -48,11 +49,13 @@ public class HttpFilterAdapterImpl extends HttpFiltersAdapter {
     private static Logger logger = LoggerFactory.getLogger(HttpFilterAdapterImpl.class);
 
     private Watchdog watchdog;
+    private ClusterConfig clusterConfig;
 
 
-    public HttpFilterAdapterImpl(HttpRequest originalRequest, ChannelHandlerContext ctx, Watchdog watchdog) {
+    public HttpFilterAdapterImpl(HttpRequest originalRequest, ChannelHandlerContext ctx, Watchdog watchdog, ClusterConfig clusterConfig) {
         super(originalRequest, ctx);
         this.watchdog = watchdog;
+        this.clusterConfig = clusterConfig;
     }
 
 
@@ -62,7 +65,7 @@ public class HttpFilterAdapterImpl extends HttpFiltersAdapter {
         //不放在里面就会报对List操作的操作异常。
         List<RequestFilter> requestFilters = Lists.newArrayList();
         //注意顺序
-        requestFilters.add(new RewriteFilter());
+        requestFilters.add(new RewriteFilter(clusterConfig));
 
         HttpResponse response = null;
         for (RequestFilter filter : requestFilters) {

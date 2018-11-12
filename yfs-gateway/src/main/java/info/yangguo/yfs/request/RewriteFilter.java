@@ -16,15 +16,26 @@
 package info.yangguo.yfs.request;
 
 import info.yangguo.yfs.common.utils.IdMaker;
+import info.yangguo.yfs.config.ClusterConfig;
 import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpObject;
 import io.netty.handler.codec.http.HttpRequest;
 import io.netty.handler.codec.http.HttpResponse;
 
+import java.util.Date;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 public class RewriteFilter implements RequestFilter {
+    private ClusterConfig clusterConfig;
+
+    private RewriteFilter() {
+    }
+
+    public RewriteFilter(ClusterConfig clusterConfig) {
+        this.clusterConfig = clusterConfig;
+    }
+
     public HttpResponse doFilter(HttpRequest originalRequest, HttpObject httpObject) {
         if (httpObject instanceof HttpRequest) {
             if (HttpMethod.POST == originalRequest.method()) {
@@ -45,7 +56,13 @@ public class RewriteFilter implements RequestFilter {
                         String[] uriParts = uri.split("/");
                         String id = uriParts[uriParts.length - 1].split("\\.")[0];
                         String[] idParts = IdMaker.INSTANCE.split(id);
-                        ((HttpRequest) httpObject).setUri("http://" + idParts[0] + uri);
+                        if (new Date().getTime() - new Date(Long.valueOf(idParts[3])).getTime() < clusterConfig.clusterProperties.getSticky() * 1000) {
+                            ((HttpRequest) httpObject).setUri("http://" + idParts[0] + "-" + idParts[1] + uri);
+                        } else {
+                            ((HttpRequest) httpObject).setUri("http://" + idParts[0] + uri);
+                        }
+                    } else {
+                        ((HttpRequest) httpObject).setUri("http://unknown" + uri);
                     }
                 }
             }

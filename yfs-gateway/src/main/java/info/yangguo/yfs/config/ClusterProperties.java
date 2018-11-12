@@ -26,7 +26,8 @@ import java.util.List;
 public class ClusterProperties {
     public long protected_space;
     public long detectionCycle;
-    public String dn;
+    //如果该值能够根据机房数据的同步速度，实时调整就更完美，这是优化的方案
+    public long sticky;
     public String local;
     public String metadataDir;
     public List<ClusterNode> node = new ArrayList<>();
