@@ -31,6 +31,7 @@ public class EventService {
     public static boolean create(ClusterProperties clusterProperties, YfsConfig yfsConfig, FileEvent fileEvent, int qos) {
         boolean result = false;
         fileEvent.getAddNodes().add(clusterProperties.getLocal());
+        fileEvent.getMetaNodes().add(clusterProperties.getLocal());
         CountDownLatch countDownLatch = new CountDownLatch(qos);
         try {
             yfsConfig.cache.put(fileEvent.getPath(), countDownLatch);

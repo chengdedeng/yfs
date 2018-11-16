@@ -53,7 +53,8 @@ public class Watchdog {
             FileEvent fileEvent = fileMetadataVersioned.value();
             long version = fileMetadataVersioned.version();
             if ((fileEvent.getRemoveNodes().size() > 0 && !fileEvent.getRemoveNodes().contains(clusterProperties.getLocal()))
-                    || (fileEvent.getRemoveNodes().size() == 0 && !fileEvent.getAddNodes().contains(clusterProperties.getLocal()))) {
+                    || (fileEvent.getRemoveNodes().size() == 0 && !fileEvent.getAddNodes().contains(clusterProperties.getLocal()))
+                    || (fileEvent.getRemoveNodes().size() == 0 && !fileEvent.getMetaNodes().contains(clusterProperties.getLocal()))) {
                 logger.info("Resync:\n{}", JsonUtil.toJson(fileEvent, true));
                 yfsConfig.fileEventMap.replace(fileEvent.getPath(), version, fileEvent);
             }

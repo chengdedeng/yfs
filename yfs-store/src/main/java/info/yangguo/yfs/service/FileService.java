@@ -363,17 +363,37 @@ public class FileService {
     }
 
     /**
-     * 删除文件
+     * 删除文件和元数据
      *
      * @param clusterProperties
-     * @param path
+     * @param key
      */
-    public static void delete(ClusterProperties clusterProperties, String path) {
-        String filePath = getPath(clusterProperties, path);
-        String metadataPath = getMetadataPath(clusterProperties, path);
+    public static void delete(ClusterProperties clusterProperties, String key) {
+        deleteFile(clusterProperties, key);
+        deleteMeta(clusterProperties, key);
+    }
+
+    /**
+     * 删除原文件
+     *
+     * @param clusterProperties
+     * @param key
+     */
+    public static void deleteFile(ClusterProperties clusterProperties, String key) {
+        String filePath = getPath(clusterProperties, key);
         File file = new File(filePath);
         if (file.exists())
             file.delete();
+    }
+
+    /**
+     * 删除元数据
+     *
+     * @param clusterProperties
+     * @param key
+     */
+    public static void deleteMeta(ClusterProperties clusterProperties, String key) {
+        String metadataPath = getMetadataPath(clusterProperties, key);
         File metadataFile = new File(metadataPath);
         if (metadataFile.exists())
             metadataFile.delete();
