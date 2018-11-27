@@ -36,7 +36,7 @@ public class EventService {
         CountDownLatch countDownLatch = new CountDownLatch(qos);
         try {
             yfsConfig.cache.put(pair.getKey(), countDownLatch);
-            yfsConfig.fileEventMap.put(pair.getKey(), pair.getValue());
+            yfsConfig.fileEventMap.putIfAbsent(pair.getKey(), pair.getValue());
             LOGGER.debug("Success to create event of {}", pair.getKey());
             //Preventing network traffic from failing
             countDownLatch.countDown();
