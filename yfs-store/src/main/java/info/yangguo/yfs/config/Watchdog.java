@@ -19,6 +19,7 @@ import info.yangguo.yfs.common.CommonConstant;
 import info.yangguo.yfs.common.po.FileEvent;
 import info.yangguo.yfs.common.po.StoreInfo;
 import info.yangguo.yfs.common.utils.JsonUtil;
+import info.yangguo.yfs.service.FileService;
 import org.apache.commons.io.FileSystemUtils;
 import org.apache.commons.io.FileUtils;
 import org.slf4j.Logger;
@@ -55,6 +56,17 @@ public class Watchdog {
                     || (fileEvent.getRemoveNodes().size() == 0 && !fileEvent.getMetaNodes().contains(clusterProperties.getLocal()))) {
                 logger.info("Resync:\n{}", JsonUtil.toJson(fileEvent, true));
                 yfsConfig.fileEventMap.replace(key, version, fileEvent);
+            } else {
+                if ((fileEvent.getRemoveNodes().size() == 0 && fileEvent.getAddNodes().contains(clusterProperties.getLocal())) && !FileService.checkExist(FileService.getPath(clusterProperties, key))) {
+                    fileEvent.getAddNodes().remove(clusterProperties.getLocal());
+                    logger.info("Resync:\n{}", JsonUtil.toJson(fileEvent, true));
+                    yfsConfig.fileEventMap.replace(key, version, fileEvent);
+                }
+                if ((fileEvent.getRemoveNodes().size() == 0 && fileEvent.getMetaNodes().contains(clusterProperties.getLocal()) && !FileService.checkExist(FileService.getMetadataPath(clusterProperties, key)))) {
+                    fileEvent.getMetaNodes().remove(clusterProperties.getLocal());
+                    logger.info("Resync:\n{}", JsonUtil.toJson(fileEvent, true));
+                    yfsConfig.fileEventMap.replace(key, version, fileEvent);
+                }
             }
         });
         logger.debug("file**************************watchdog");

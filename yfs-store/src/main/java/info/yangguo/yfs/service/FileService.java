@@ -479,4 +479,17 @@ public class FileService {
         }
         return metadata;
     }
+
+    /**
+     * 判断文件是否存在
+     *
+     * @param path
+     */
+    public static boolean checkExist(String path) {
+        File file = new File(path);
+        if (file.exists())
+            return true;
+        else
+            return false;
+    }
 }
