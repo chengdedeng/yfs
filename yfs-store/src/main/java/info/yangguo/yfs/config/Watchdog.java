@@ -63,7 +63,7 @@ public class Watchdog {
     }
 
     /**
-     * 定时想Gateway上传存储节点信息，Gateway才能根据store的信息进行路由。
+     * 定时向Gateway上传存储节点信息，Gateway才能根据store的信息进行路由。
      */
     @Scheduled(fixedRate = 5000)
     public void watchServer() {
