@@ -28,6 +28,8 @@ import org.apache.commons.codec.digest.DigestUtils;
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.tuple.ImmutablePair;
+import org.apache.commons.lang3.tuple.Pair;
 import org.apache.fontbox.ttf.BufferedRandomAccessFile;
 import org.apache.http.HttpResponse;
 import org.apache.http.client.HttpClient;
@@ -104,7 +106,7 @@ public class FileService {
      * @return
      * @throws IOException
      */
-    public static FileEvent store(ClusterProperties clusterProperties, CommonsMultipartFile commonsMultipartFile, HttpServletRequest httpServletRequest) throws IOException {
+    public static Pair<String, FileEvent> store(ClusterProperties clusterProperties, CommonsMultipartFile commonsMultipartFile, HttpServletRequest httpServletRequest) throws IOException {
         FileEvent fileEvent = new FileEvent();
         Integer block1 = new Random().nextInt(clusterProperties.getStore().getFiledata().getPartition()) + 1;
         Integer block2 = new Random().nextInt(clusterProperties.getStore().getFiledata().getPartition()) + 1;
@@ -116,7 +118,6 @@ public class FileService {
             relativePath = Integer.toHexString(block1) + File.separator + Integer.toHexString(block2) + File.separator + newName + "." + exFileName;
         else
             relativePath = Integer.toHexString(block1) + File.separator + Integer.toHexString(block2) + File.separator + newName;
-        fileEvent.setPath(relativePath);
 
         FileMetadata fileMetadata = new FileMetadata();
         fileMetadata.setPath(relativePath);
@@ -159,7 +160,7 @@ public class FileService {
             delete(clusterProperties, fileMetadata.getPath());
             throw e;
         }
-        return fileEvent;
+        return new ImmutablePair<>(relativePath, fileEvent);
     }
 
 

@@ -19,6 +19,7 @@ import info.yangguo.yfs.common.po.FileEvent;
 import info.yangguo.yfs.config.ClusterProperties;
 import info.yangguo.yfs.config.YfsConfig;
 import io.atomix.utils.time.Versioned;
+import org.apache.commons.lang3.tuple.Pair;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -28,22 +29,22 @@ import java.util.concurrent.TimeUnit;
 public class EventService {
     private static Logger LOGGER = LoggerFactory.getLogger(EventService.class);
 
-    public static boolean create(ClusterProperties clusterProperties, YfsConfig yfsConfig, FileEvent fileEvent, int qos) {
+    public static boolean create(ClusterProperties clusterProperties, YfsConfig yfsConfig, Pair<String, FileEvent> pair, int qos) {
         boolean result = false;
-        fileEvent.getAddNodes().add(clusterProperties.getLocal());
-        fileEvent.getMetaNodes().add(clusterProperties.getLocal());
+        pair.getValue().getAddNodes().add(clusterProperties.getLocal());
+        pair.getValue().getMetaNodes().add(clusterProperties.getLocal());
         CountDownLatch countDownLatch = new CountDownLatch(qos);
         try {
-            yfsConfig.cache.put(fileEvent.getPath(), countDownLatch);
-            yfsConfig.fileEventMap.put(fileEvent.getPath(), fileEvent);
-            LOGGER.debug("Success to create event of {}", fileEvent.getPath());
+            yfsConfig.cache.put(pair.getKey(), countDownLatch);
+            yfsConfig.fileEventMap.put(pair.getKey(), pair.getValue());
+            LOGGER.debug("Success to create event of {}", pair.getKey());
             //Preventing network traffic from failing
             countDownLatch.countDown();
             result = countDownLatch.await(clusterProperties.getStore().getQos_max_time(), TimeUnit.SECONDS);
         } catch (InterruptedException e) {
-            LOGGER.warn("Qos of {} is fail!", fileEvent.getPath());
+            LOGGER.warn("Qos of {} is fail!", pair.getKey());
         } finally {
-            yfsConfig.cache.invalidate(fileEvent.getPath());
+            yfsConfig.cache.invalidate(pair.getKey());
         }
         return result;
     }

@@ -19,7 +19,6 @@ import info.yangguo.yfs.common.CommonConstant;
 import info.yangguo.yfs.common.po.FileEvent;
 import info.yangguo.yfs.common.po.StoreInfo;
 import info.yangguo.yfs.common.utils.JsonUtil;
-import io.atomix.utils.time.Versioned;
 import org.apache.commons.io.FileSystemUtils;
 import org.apache.commons.io.FileUtils;
 import org.slf4j.Logger;
@@ -30,7 +29,6 @@ import org.springframework.stereotype.Component;
 
 import java.io.File;
 import java.io.IOException;
-import java.util.Collection;
 import java.util.Date;
 
 @Component
@@ -48,15 +46,15 @@ public class Watchdog {
      */
     @Scheduled(initialDelayString = "${yfs.store.watchdog.initial_delay}", fixedDelayString = "${yfs.store.watchdog.fixed_delay}")
     public void watchFile() {
-        Collection<Versioned<FileEvent>> metadata = yfsConfig.fileEventMap.values();
-        metadata.parallelStream().forEach(fileMetadataVersioned -> {
-            FileEvent fileEvent = fileMetadataVersioned.value();
-            long version = fileMetadataVersioned.version();
+        yfsConfig.fileEventMap.entrySet().parallelStream().forEach(entry -> {
+            String key = entry.getKey();
+            FileEvent fileEvent = entry.getValue().value();
+            long version = entry.getValue().version();
             if ((fileEvent.getRemoveNodes().size() > 0 && !fileEvent.getRemoveNodes().contains(clusterProperties.getLocal()))
                     || (fileEvent.getRemoveNodes().size() == 0 && !fileEvent.getAddNodes().contains(clusterProperties.getLocal()))
                     || (fileEvent.getRemoveNodes().size() == 0 && !fileEvent.getMetaNodes().contains(clusterProperties.getLocal()))) {
                 logger.info("Resync:\n{}", JsonUtil.toJson(fileEvent, true));
-                yfsConfig.fileEventMap.replace(fileEvent.getPath(), version, fileEvent);
+                yfsConfig.fileEventMap.replace(key, version, fileEvent);
             }
         });
         logger.debug("file**************************watchdog");

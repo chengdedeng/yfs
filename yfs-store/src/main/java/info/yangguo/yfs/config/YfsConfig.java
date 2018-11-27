@@ -165,6 +165,7 @@ public class YfsConfig {
                 .withSerializer(CommonConstant.protocolSerializer)
                 .build();
         fileEventMap.addListener(event -> {
+            String key = event.key();
             switch (event.type()) {
                 case INSERT:
                     Versioned<FileEvent> insertValue = event.newValue();
@@ -174,7 +175,7 @@ public class YfsConfig {
                         logger.info("{} event info:\n{}",
                                 MapEvent.Type.INSERT.name(),
                                 JsonUtil.toJson(insertEvent, true));
-                        syncFile(clusterProperties, insertValue, MapEvent.Type.INSERT);
+                        syncFile(clusterProperties, key, insertValue, MapEvent.Type.INSERT);
                     }
                     break;
                 case UPDATE:
@@ -191,14 +192,14 @@ public class YfsConfig {
                                 MapEvent.Type.UPDATE.name(),
                                 JsonUtil.toJson(oldFileEvent, true),
                                 JsonUtil.toJson(newFileEvent, true));
-                        syncFile(clusterProperties, newValue, MapEvent.Type.UPDATE);
+                        syncFile(clusterProperties, key, newValue, MapEvent.Type.UPDATE);
                     } else if (removeNodes.size() > 0 && !removeNodes.contains(clusterProperties.getLocal())) {
                         logger.info("{} event info:\noldValue:{}\nnewValue:{}",
                                 MapEvent.Type.UPDATE.name(),
                                 JsonUtil.toJson(oldFileEvent, true),
                                 JsonUtil.toJson(newFileEvent, true));
-                        FileService.delete(clusterProperties, newFileEvent.getPath());
-                        updateRemoveNodes(clusterProperties, newFileEvent.getPath());
+                        FileService.delete(clusterProperties, key);
+                        updateRemoveNodes(clusterProperties, key);
                     }
                     //为了实现QOS，yfs使用CountDownLatch来实现上传节点的有限时间阻塞，由yfs.store.qos_max_time配置决定。
                     //上传节点在上传之前会创建一个CountDownLatch放入到本地缓存，文件上传完成之后，上传节点自身会发布update event信息；
@@ -257,10 +258,9 @@ public class YfsConfig {
      * @param fileEventVersioned
      * @param type
      */
-    private void syncFile(ClusterProperties clusterProperties, Versioned<FileEvent> fileEventVersioned, MapEvent.Type type) {
+    private void syncFile(ClusterProperties clusterProperties, String fileRelativePath, Versioned<FileEvent> fileEventVersioned, MapEvent.Type type) {
         boolean isSendEvent = false;
         FileEvent fileEvent = fileEventVersioned.value();
-        String fileRelativePath = fileEvent.getPath();
         String metaRelativePath = fileRelativePath + ".meta";
         if (fileEvent.getFileCrc32() != null && !fileEvent.getAddNodes().contains(clusterProperties.getLocal())) {
             for (String addNode : fileEvent.getAddNodes()) {
@@ -273,7 +273,7 @@ public class YfsConfig {
                     isSendEvent = true;
                     break;
                 } catch (Exception e) {
-                    FileService.deleteFile(clusterProperties, fileEvent.getPath());
+                    FileService.deleteFile(clusterProperties, fileRelativePath);
                     logger.warn("Failed to sync {}", fileRelativePath, e);
                 }
             }
@@ -290,15 +290,15 @@ public class YfsConfig {
                     isSendEvent = true;
                     break;
                 } catch (Exception e) {
-                    FileService.deleteMeta(clusterProperties, fileEvent.getPath());
+                    FileService.deleteMeta(clusterProperties, fileRelativePath);
                     logger.warn("Failed to sync {}", metaRelativePath, e);
                 }
             }
         }
 
         if (isSendEvent)
-            if (fileEventMap.replace(fileEvent.getPath(), fileEventVersioned.version(), fileEvent))
-                logger.debug("Success to replace event when sync file {}", fileEvent.getPath());
+            if (fileEventMap.replace(fileRelativePath, fileEventVersioned.version(), fileEvent))
+                logger.debug("Success to replace event when sync file {}", fileRelativePath);
 
     }
 

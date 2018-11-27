@@ -42,16 +42,17 @@ public class AdminController extends BaseController {
         Result result = new Result<>();
         HashSet<String> anomalyFile = new HashSet<>();
         try {
-            yfsConfig.fileEventMap.values().stream().forEach(fileMetadataVersioned -> {
-                long version = fileMetadataVersioned.version();
-                FileEvent fileEvent = fileMetadataVersioned.value();
+            yfsConfig.fileEventMap.entrySet().stream().forEach(entry -> {
+                String key = entry.getKey();
+                long version = entry.getValue().version();
+                FileEvent fileEvent = entry.getValue().value();
                 fileEvent.getAddNodes().remove(node);
                 try {
-                    if (false == yfsConfig.fileEventMap.replace(fileEvent.getPath(), version, fileEvent)) {
-                        anomalyFile.add(fileEvent.getPath());
+                    if (false == yfsConfig.fileEventMap.replace(key, version, fileEvent)) {
+                        anomalyFile.add(key);
                     }
                 } catch (Exception e) {
-                    anomalyFile.add(fileEvent.getPath());
+                    anomalyFile.add(key);
                 }
             });
             if (anomalyFile.size() == 0) {

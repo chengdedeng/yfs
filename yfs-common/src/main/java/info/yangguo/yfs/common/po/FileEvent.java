@@ -28,10 +28,6 @@ import java.util.List;
 @AllArgsConstructor
 public class FileEvent implements Serializable {
     /**
-     * 文件的相对路径
-     */
-    private String path;
-    /**
      * file checksum by crc32
      */
     private String fileCrc32;

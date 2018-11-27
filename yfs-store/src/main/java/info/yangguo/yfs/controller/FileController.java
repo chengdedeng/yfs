@@ -24,6 +24,7 @@ import info.yangguo.yfs.service.EventService;
 import info.yangguo.yfs.service.FileService;
 import io.atomix.utils.time.Versioned;
 import io.swagger.annotations.ApiOperation;
+import org.apache.commons.lang3.tuple.Pair;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.*;
@@ -49,22 +50,22 @@ public class FileController extends BaseController {
     public Result upload(MultipartFile file, HttpServletRequest httpServletRequest) {
         Result result = new Result();
         int qos = 2;
-        FileEvent fileEvent = null;
+        Pair<String, FileEvent> pair = null;
         try {
             CommonsMultipartFile commonsMultipartFile = (CommonsMultipartFile) file;
-            fileEvent = FileService.store(clusterProperties, commonsMultipartFile, httpServletRequest);
-            boolean qosResult = EventService.create(clusterProperties, yfsConfig, fileEvent, qos);
+            pair = FileService.store(clusterProperties, commonsMultipartFile, httpServletRequest);
+            boolean qosResult = EventService.create(clusterProperties, yfsConfig, pair, qos);
             if (qosResult == true) {
                 result.setCode(ResultCode.C200.code);
             } else {
                 result.setCode(ResultCode.C202.code);
             }
-            result.setValue(fileEvent.getPath());
-            logger.debug("Success to upload {}", fileEvent.getPath());
+            result.setValue(pair.getKey());
+            logger.debug("Success to upload {}", pair.getKey());
         } catch (Exception e) {
             logger.error("Upload", e);
-            if (fileEvent != null)
-                FileService.delete(clusterProperties, fileEvent.getPath());
+            if (pair != null)
+                FileService.delete(clusterProperties, pair.getKey());
             result.setCode(ResultCode.C500.getCode());
             result.setValue(ResultCode.C500.getDesc());
         }
@@ -79,8 +80,8 @@ public class FileController extends BaseController {
         try {
             Versioned<FileEvent> fileEventVersioned = yfsConfig.fileEventMap.get(path);
             if (fileEventVersioned != null) {
-                if (EventService.softDelete(clusterProperties, yfsConfig, fileEventVersioned.value().getPath())) {
-                    FileService.delete(clusterProperties, fileEventVersioned.value().getPath());
+                if (EventService.softDelete(clusterProperties, yfsConfig, path)) {
+                    FileService.delete(clusterProperties, path);
                     result.setCode(ResultCode.C200.code);
                 }
             }
