@@ -62,7 +62,7 @@ public class Watchdog {
                     logger.info("Resync:\n{}", JsonUtil.toJson(fileEvent, true));
                     yfsConfig.fileEventMap.replace(key, version, fileEvent);
                 }
-                if ((fileEvent.getRemoveNodes().size() == 0 && fileEvent.getMetaNodes().contains(clusterProperties.getLocal()) && !FileService.checkExist(FileService.getMetadataPath(clusterProperties, key)))) {
+                if ((fileEvent.getRemoveNodes().size() == 0 && fileEvent.getMetaNodes().contains(clusterProperties.getLocal()) && !FileService.checkExist(FileService.makeMetadataPath(FileService.getPath(clusterProperties, key))))) {
                     fileEvent.getMetaNodes().remove(clusterProperties.getLocal());
                     logger.info("Resync:\n{}", JsonUtil.toJson(fileEvent, true));
                     yfsConfig.fileEventMap.replace(key, version, fileEvent);

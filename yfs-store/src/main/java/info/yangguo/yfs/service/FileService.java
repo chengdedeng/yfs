@@ -66,8 +66,9 @@ import java.util.function.Function;
 public class FileService {
     private static Logger logger = LoggerFactory.getLogger(FileService.class);
     private static Map<String, Long> runningFile = new ConcurrentHashMap<>();
-    private static String timePattern = "EEE, dd MMM yyyy HH:mm:ss";
     private static HttpClient httpClient;
+    private static final String timePattern = "EEE, dd MMM yyyy HH:mm:ss";
+    private static final String metaSuffix = "._yfs_meta_";
 
     static {
         Registry<ConnectionSocketFactory> registry = RegistryBuilder.<ConnectionSocketFactory>create()
@@ -235,7 +236,7 @@ public class FileService {
      * @throws IOException
      */
     private static String storeMetadata(ClusterProperties clusterProperties, FileMetadata fileMetadata) throws IOException {
-        String fullPath = getMetadataPath(clusterProperties, fileMetadata.getPath());
+        String fullPath = makeMetadataPath(getPath(clusterProperties, fileMetadata.getPath()));
         File file = new File(fullPath);
         if (file.exists()) {
             file.delete();
@@ -257,11 +258,11 @@ public class FileService {
     public static void getFile(ClusterProperties clusterProperties, String relativePath, HttpServletRequest request, HttpServletResponse
             response) throws IOException {
         int buffSize = 256;
-        if (relativePath.endsWith(".meta")) {
+        if (verifyMetadataPath(relativePath)) {
             response.setStatus(HttpStatus.OK.value());
             response.setHeader(Metadata.CONTENT_TYPE, MimeTypeUtils.APPLICATION_JSON_VALUE);
 
-            File metaFile = new File(getMetadataPath(clusterProperties, relativePath));
+            File metaFile = new File(getPath(clusterProperties, relativePath));
             response.setHeader(Metadata.CONTENT_LENGTH, String.valueOf(metaFile.length()));
             try (InputStream inputStream = new FileInputStream(metaFile); OutputStream outputStream = response.getOutputStream()) {
                 IOUtils.copyLarge(inputStream, outputStream, new byte[buffSize]);
@@ -394,7 +395,7 @@ public class FileService {
      * @param key
      */
     public static void deleteMeta(ClusterProperties clusterProperties, String key) {
-        String metadataPath = getMetadataPath(clusterProperties, key);
+        String metadataPath = makeMetadataPath(getPath(clusterProperties, key));
         File metadataFile = new File(metadataPath);
         if (metadataFile.exists())
             metadataFile.delete();
@@ -420,17 +421,26 @@ public class FileService {
     }
 
     /**
-     * 获取metadata文件在服务器端的绝对地址
+     * 构建metadata file path
      *
-     * @param clusterProperties
-     * @param relativeFilePath
+     * @param path
      * @return
      */
-    public static String getMetadataPath(ClusterProperties clusterProperties, String relativeFilePath) {
-        if (relativeFilePath.endsWith(".meta"))
-            return getPath(clusterProperties, relativeFilePath);
+    public static String makeMetadataPath(String path) {
+        return path + metaSuffix;
+    }
+
+    /**
+     * 检测文件路径是否是metadata file path
+     *
+     * @param path
+     * @return
+     */
+    public static boolean verifyMetadataPath(String path) {
+        if (path.endsWith(metaSuffix))
+            return true;
         else
-            return getPath(clusterProperties, relativeFilePath) + ".meta";
+            return false;
     }
 
     /**
@@ -441,7 +451,7 @@ public class FileService {
      * @return
      */
     public static FileMetadata getMetadata(ClusterProperties clusterProperties, String relativeFilePath) throws IOException {
-        String metadataJson = FileUtils.readFileToString(new File(getMetadataPath(clusterProperties, relativeFilePath)), "UTF-8");
+        String metadataJson = FileUtils.readFileToString(new File(makeMetadataPath(getPath(clusterProperties, relativeFilePath))), "UTF-8");
         FileMetadata fileMetadata = (FileMetadata) JsonUtil.fromJson(metadataJson, FileMetadata.class);
         return fileMetadata;
     }

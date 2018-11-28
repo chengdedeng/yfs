@@ -261,7 +261,7 @@ public class YfsConfig {
     private void syncFile(ClusterProperties clusterProperties, String fileRelativePath, Versioned<FileEvent> fileEventVersioned, MapEvent.Type type) {
         boolean isSendEvent = false;
         FileEvent fileEvent = fileEventVersioned.value();
-        String metaRelativePath = fileRelativePath + ".meta";
+        String metaRelativePath = FileService.makeMetadataPath(fileRelativePath);
         if (fileEvent.getFileCrc32() != null && !fileEvent.getAddNodes().contains(clusterProperties.getLocal())) {
             for (String addNode : fileEvent.getAddNodes()) {
                 try {
