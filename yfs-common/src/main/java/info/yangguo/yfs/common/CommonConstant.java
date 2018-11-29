@@ -20,14 +20,12 @@ import info.yangguo.yfs.common.po.StoreInfo;
 import io.atomix.utils.serializer.Namespace;
 import io.atomix.utils.serializer.Serializer;
 
-import java.util.ArrayList;
-import java.util.Date;
-import java.util.HashMap;
-import java.util.Map;
+import java.util.*;
 
 public class CommonConstant {
     public static final String fileMetadataMapName = "file-metadata";
     public static final String storeInfoMapName = "store-info";
+    public static final String repairMetadataMapName = "repair-metadata";
     public static final String xHeaderPrefix = "x-yfs-";
     public static final String gatewayZone = "gateway";
     public static final String storeZone = "store";
@@ -40,6 +38,7 @@ public class CommonConstant {
             .register(FileEvent.class)
             .register(Map.class)
             .register(HashMap.class)
+            .register(HashSet.class)
             .build());
 
     /**

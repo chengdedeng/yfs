@@ -420,8 +420,19 @@ public class FileService {
         return filePath.toString();
     }
 
+
     /**
-     * 构建metadata file path
+     * 通过metadata file path构建file path
+     *
+     * @param path
+     * @return
+     */
+    public static String makeFilePath(String path) {
+        return path.replace(path, metaSuffix);
+    }
+
+    /**
+     * 通过file path构建metadata file path
      *
      * @param path
      * @return
