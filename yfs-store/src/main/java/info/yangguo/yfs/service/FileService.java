@@ -420,6 +420,24 @@ public class FileService {
         return filePath.toString();
     }
 
+    /**
+     * 获取文件在服务器端的相对路径
+     *
+     * @param clusterProperties
+     * @param absolutePath
+     * @return
+     */
+    public static String getRelativePath(ClusterProperties clusterProperties, String absolutePath) {
+        StringBuilder parentPath = new StringBuilder();
+        if (!clusterProperties.getStore().getFiledata().getDir().startsWith(File.separator)) {
+            parentPath.append(FileUtils.getUserDirectoryPath()).append(File.separator);
+        } else {
+            parentPath.append(clusterProperties.getStore().getFiledata().getDir()).append(File.separator);
+        }
+        parentPath.append(clusterProperties.getStore().getFiledata().getDir()).append(File.separator);
+        return absolutePath.replace(parentPath.toString(), "");
+    }
+
 
     /**
      * 通过metadata file path构建file path
@@ -428,7 +446,7 @@ public class FileService {
      * @return
      */
     public static String makeFilePath(String path) {
-        return path.replace(path, metaSuffix);
+        return path.replace(metaSuffix,"");
     }
 
     /**

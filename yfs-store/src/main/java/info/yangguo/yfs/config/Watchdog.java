@@ -15,11 +15,15 @@
  */
 package info.yangguo.yfs.config;
 
+import com.google.common.collect.Maps;
+import com.google.common.collect.Sets;
 import info.yangguo.yfs.common.CommonConstant;
 import info.yangguo.yfs.common.po.FileEvent;
+import info.yangguo.yfs.common.po.RepairEvent;
 import info.yangguo.yfs.common.po.StoreInfo;
 import info.yangguo.yfs.common.utils.JsonUtil;
 import info.yangguo.yfs.service.FileService;
+import io.atomix.utils.time.Versioned;
 import org.apache.commons.io.FileSystemUtils;
 import org.apache.commons.io.FileUtils;
 import org.slf4j.Logger;
@@ -30,7 +34,12 @@ import org.springframework.stereotype.Component;
 
 import java.io.File;
 import java.io.IOException;
+import java.nio.file.*;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.util.Date;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Set;
 
 @Component
 public class Watchdog {
@@ -70,6 +79,70 @@ public class Watchdog {
             }
         });
         logger.debug("file**************************watchdog");
+    }
+
+
+    @Scheduled(initialDelayString = "${yfs.store.watchdog.initial_delay}", fixedDelayString = "${yfs.store.watchdog.repair_delay}")
+    public void repair() {
+        try {
+            Files.walkFileTree(Paths.get(FileService.getPath(clusterProperties, "")), new SimpleFileVisitor<Path>() {
+                @Override
+                public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
+                    if (!Files.isHidden(file)) {
+                        String filePath = FileService.getRelativePath(clusterProperties, file.toString());
+                        String originFilePath = FileService.makeFilePath(filePath);
+                        try {
+                            String checksum = String.valueOf(FileUtils.checksumCRC32(file.toFile()));
+                            Versioned<FileEvent> fileEventVersioned = yfsConfig.fileEventMap.get(originFilePath);
+                            if (fileEventVersioned != null) {
+                                FileEvent fileEvent = fileEventVersioned.value();
+                                if (FileService.verifyMetadataPath(filePath)) {
+                                    if (!fileEvent.getMetaCrc32().equals(checksum)) {
+                                        fileEvent.getMetaNodes().remove(clusterProperties.getLocal());
+                                        yfsConfig.fileEventMap.replace(originFilePath, fileEventVersioned.version(), fileEvent);
+                                    }
+                                } else {
+                                    if (!fileEvent.getFileCrc32().equals(checksum)) {
+                                        fileEvent.getAddNodes().remove(clusterProperties.getLocal());
+                                        yfsConfig.fileEventMap.replace(originFilePath, fileEventVersioned.version(), fileEvent);
+                                    }
+                                }
+                            } else {
+                                Versioned<RepairEvent> repairEventVersioned = yfsConfig.repairEventMap.get(filePath);
+                                if (repairEventVersioned == null) {
+                                    HashMap map = Maps.newHashMap();
+                                    map.put(checksum, Sets.newHashSet(clusterProperties.getLocal()));
+                                    RepairEvent repairEvent = new RepairEvent(new Date().getTime(), map);
+                                    yfsConfig.repairEventMap.putIfAbsent(filePath, repairEvent);
+                                } else {
+                                    Set<String> existNodes = yfsConfig.makeRepairExistNode.apply(repairEventVersioned.value().getRepairInfo());
+                                    if (!existNodes.contains(clusterProperties.getLocal())) {
+                                        Set<String> nodes = repairEventVersioned.value().getRepairInfo().get(checksum);
+                                        if (nodes == null) {
+                                            nodes = new HashSet<>();
+                                        }
+                                        nodes.add(clusterProperties.getLocal());
+                                        yfsConfig.repairEventMap.replace(filePath, repairEventVersioned.version(), repairEventVersioned.value());
+                                    } else if (existNodes.size() == clusterProperties.getStore().getNode().size()) {
+                                        if (new Date().getTime() - repairEventVersioned.value().getCreateTime() > clusterProperties.getStore().getWatchdog().getRepair_delay() * 3) {
+                                            yfsConfig.repairEventMap.remove(filePath);
+                                        } else {
+                                            yfsConfig.repairEventMap.replace(filePath, repairEventVersioned.version(), repairEventVersioned.value());
+                                        }
+                                    }
+                                }
+                            }
+                        } catch (Exception e) {
+                            logger.warn("Repair {} failure", filePath, e);
+                        }
+                    }
+                    return super.visitFile(file, attrs);
+                }
+            });
+        } catch (Exception e) {
+            logger.error("Repair failure", e);
+        }
+        logger.debug("Repair**************************watchdog");
     }
 
     /**

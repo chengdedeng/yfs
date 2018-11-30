@@ -40,6 +40,7 @@ public class ClusterProperties {
         private Metadata metadata;
         private Filedata filedata;
         private List<ClusterNode> node;
+        private Watchdog watchdog;
     }
 
     @Getter
@@ -70,5 +71,13 @@ public class ClusterProperties {
     public static class Filedata {
         private String dir;
         private int partition;
+    }
+
+    @Getter
+    @Setter
+    public static class Watchdog{
+        private long initial_delay;
+        private long fixed_delay;
+        private long repair_delay;
     }
 }

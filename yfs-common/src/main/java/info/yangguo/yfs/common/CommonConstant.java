@@ -16,6 +16,7 @@
 package info.yangguo.yfs.common;
 
 import info.yangguo.yfs.common.po.FileEvent;
+import info.yangguo.yfs.common.po.RepairEvent;
 import info.yangguo.yfs.common.po.StoreInfo;
 import io.atomix.utils.serializer.Namespace;
 import io.atomix.utils.serializer.Serializer;
@@ -39,6 +40,7 @@ public class CommonConstant {
             .register(Map.class)
             .register(HashMap.class)
             .register(HashSet.class)
+            .register(RepairEvent.class)
             .build());
 
     /**
