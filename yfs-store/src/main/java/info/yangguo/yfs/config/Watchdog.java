@@ -81,7 +81,11 @@ public class Watchdog {
         logger.debug("file**************************watchdog");
     }
 
-
+    /**
+     * 定时扫描本地文件，修复数据。
+     * 1. 检测checksum，修复损坏文件。
+     * 2. 根据本地文件，修复元数据。
+     */
     @Scheduled(initialDelayString = "${yfs.store.watchdog.initial_delay}", fixedDelayString = "${yfs.store.watchdog.repair_delay}")
     public void repair() {
         try {
