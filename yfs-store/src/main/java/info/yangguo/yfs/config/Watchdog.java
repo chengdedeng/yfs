@@ -23,6 +23,8 @@ import info.yangguo.yfs.common.po.RepairEvent;
 import info.yangguo.yfs.common.po.StoreInfo;
 import info.yangguo.yfs.common.utils.JsonUtil;
 import info.yangguo.yfs.service.FileService;
+import io.atomix.cluster.Member;
+import io.atomix.core.Atomix;
 import io.atomix.utils.time.Versioned;
 import org.apache.commons.io.FileSystemUtils;
 import org.apache.commons.io.FileUtils;
@@ -36,10 +38,8 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.file.*;
 import java.nio.file.attribute.BasicFileAttributes;
-import java.util.Date;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.Set;
+import java.util.*;
+import java.util.stream.Collectors;
 
 @Component
 public class Watchdog {
@@ -48,6 +48,8 @@ public class Watchdog {
     private ClusterProperties clusterProperties;
     @Autowired
     private YfsConfig yfsConfig;
+    @Autowired
+    private Atomix storeAtomix;
 
     /**
      * 定时检查AtomicMap中的文件本地是否已经同步，出现不同步的情况有：
@@ -150,7 +152,8 @@ public class Watchdog {
     }
 
     /**
-     * 定时向Gateway上传存储节点信息，Gateway才能根据store的信息进行路由。
+     * 1.定时向Gateway上传存储节点信息，Gateway才能根据store的信息进行路由。
+     * 2.定时更新本地node信息。
      */
     @Scheduled(fixedRate = 5000)
     public void watchServer() {
@@ -198,8 +201,48 @@ public class Watchdog {
 
 
             yfsConfig.storeInfoMap.put(CommonConstant.storeInfoConsistentMapKey(clusterProperties.getGroup(), clusterNode.getIp(), clusterNode.getHttp_port()), storeInfo);
+            logger.debug("Store[{}] has been updated to gateway finished", JsonUtil.toJson(storeInfo, false));
         } catch (IOException e) {
-            logger.error("server check fail", e);
+            logger.error("To update store of gateway fail", e);
+        }
+        //上线新节点之后，更新内存中的配置信息。
+        try {
+            Map<String, Member> members = storeAtomix.getMembershipService().getMembers().stream().collect(Collectors.toMap(member -> member.id().id(), member -> member));
+            Map<String, ClusterProperties.ClusterNode> clusterNodeMap = yfsConfig.storeNodeMap.apply(clusterProperties);
+            if (members.size() >= clusterNodeMap.size()) {
+                //把新节点加入本地配置
+                members
+                        .entrySet()
+                        .stream()
+                        .filter(entry1 -> {
+                            if (clusterNodeMap.containsKey(entry1.getKey())) {
+                                return false;
+                            } else {
+                                return true;
+                            }
+                        })
+                        .forEach(entry2 -> {
+                            ClusterProperties.ClusterNode clusterNode = new ClusterProperties.ClusterNode();
+                            clusterNode.setId(entry2.getKey());
+                            clusterNode.setIp(entry2.getValue().address().host());
+                            clusterNode.setSocket_port(entry2.getValue().address().port());
+                            clusterNode.setHttp_port(Integer.valueOf((String) entry2.getValue().properties().get(CommonConstant.memberHttpPortPro)));
+                            clusterProperties.getStore().getNode().add(clusterNode);
+                            logger.info("Node[{}] has been added into the local config", JsonUtil.toJson(clusterNode, false));
+                        });
+
+                //把本地配置中过时节点剔除
+                Iterator<ClusterProperties.ClusterNode> iterator = clusterProperties.getStore().getNode().iterator();
+                while (iterator.hasNext()) {
+                    ClusterProperties.ClusterNode node = iterator.next();
+                    if (!members.containsKey(node.getId())) {
+                        iterator.remove();
+                        logger.warn("Node[{}] has been removed from the local config", JsonUtil.toJson(node, false));
+                    }
+                }
+            }
+        } catch (Exception e) {
+            logger.error("Update local config fail", e);
         }
         logger.debug("server**************************watchdog");
     }

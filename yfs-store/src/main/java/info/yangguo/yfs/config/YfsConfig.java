@@ -63,7 +63,7 @@ public class YfsConfig {
     @Autowired
     private ClusterProperties clusterProperties;
 
-    private final Function<ClusterProperties, Map<String, ClusterProperties.ClusterNode>> storeNodeMap = properties -> properties.getStore().getNode().stream().collect(Collectors.toMap(node -> node.getId(), node -> node));
+    public final Function<ClusterProperties, Map<String, ClusterProperties.ClusterNode>> storeNodeMap = properties -> properties.getStore().getNode().stream().collect(Collectors.toMap(node -> node.getId(), node -> node));
     private final Function<ClusterProperties, Map<String, ClusterProperties.ClusterNode>> gatewayNodeMap = properties -> properties.getGateway().getNode().stream().collect(Collectors.toMap(node -> node.getId(), node -> node));
 
     private final Function<ClusterProperties, List<Member>> storeMembers = properties -> {
@@ -72,6 +72,7 @@ public class YfsConfig {
             return Member.builder()
                     .withId(node.getValue().getId())
                     .withAddress(node.getValue().getIp(), node.getValue().getSocket_port())
+                    .withProperty(CommonConstant.memberHttpPortPro, String.valueOf(node.getValue().getHttp_port()))
                     .build();
         }).collect(Collectors.toList());
     };
@@ -91,6 +92,7 @@ public class YfsConfig {
         return Member.builder()
                 .withId(properties.getLocal())
                 .withAddress(clusterNode.getIp(), clusterNode.getSocket_port())
+                .withProperty(CommonConstant.memberHttpPortPro, String.valueOf(clusterNode.getHttp_port()))
                 .build();
     };
 
@@ -200,6 +202,7 @@ public class YfsConfig {
                         .build())
                 .withManagementGroup(storeManagementGroup.apply(clusterProperties))
                 .withPartitionGroups(storeDataGroup.apply(clusterProperties))
+                .withProperties(m.properties())
                 .build();
         atomix.start().join();
         fileEventMap = atomix.<String, FileEvent>atomicMapBuilder(CommonConstant.fileMetadataMapName)

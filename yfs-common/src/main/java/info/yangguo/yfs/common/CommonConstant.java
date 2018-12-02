@@ -31,6 +31,7 @@ public class CommonConstant {
     public static final String gatewayZone = "gateway";
     public static final String storeZone = "store";
     public static final String fileName = "x-filename";
+    public static final String memberHttpPortPro = "http-port";
 
     public static final Serializer protocolSerializer = Serializer.using(Namespace.builder()
             .register(ArrayList.class)
