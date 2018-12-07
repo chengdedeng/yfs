@@ -61,7 +61,6 @@ public class FileService {
     private static Logger logger = LoggerFactory.getLogger(FileService.class);
     private static Map<String, Long> runningFile = new ConcurrentHashMap<>();
     private static HttpClient httpClient;
-    private static final String timePattern = "EEE, dd MMM yyyy HH:mm:ss";
 
     static {
         Registry<ConnectionSocketFactory> registry = RegistryBuilder.<ConnectionSocketFactory>create()
@@ -196,11 +195,8 @@ public class FileService {
             //赋予新的iNode
             file = new File(fullPath);
         }
-        try {
-            FileUtils.copyInputStreamToFile(inputStream, file);
-        } finally {
-            IOUtils.closeQuietly(inputStream);
-        }
+        FileUtils.copyInputStreamToFile(inputStream, file);
+
         return String.valueOf(FileUtils.checksumCRC32(new File(fullPath)));
     }
 
