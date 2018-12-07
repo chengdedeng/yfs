@@ -63,18 +63,12 @@ public class Watchdog {
             FileEvent fileEvent = entry.getValue().value();
             long version = entry.getValue().version();
             if ((fileEvent.getRemoveNodes().size() > 0 && !fileEvent.getRemoveNodes().contains(clusterProperties.getLocal()))
-                    || (fileEvent.getRemoveNodes().size() == 0 && !fileEvent.getAddNodes().contains(clusterProperties.getLocal()))
-                    || (fileEvent.getRemoveNodes().size() == 0 && !fileEvent.getMetaNodes().contains(clusterProperties.getLocal()))) {
+                    || (fileEvent.getRemoveNodes().size() == 0 && !fileEvent.getAddNodes().contains(clusterProperties.getLocal()))) {
                 logger.info("Resync:\n{}", JsonUtil.toJson(fileEvent, true));
                 yfsConfig.fileEventMap.replace(key, version, fileEvent);
             } else {
-                if ((fileEvent.getRemoveNodes().size() == 0 && fileEvent.getAddNodes().contains(clusterProperties.getLocal())) && !FileService.checkExist(FileService.getPath(clusterProperties, key))) {
+                if ((fileEvent.getRemoveNodes().size() == 0 && fileEvent.getAddNodes().contains(clusterProperties.getLocal())) && !FileService.checkExist(FileService.getFullPath(clusterProperties, key))) {
                     fileEvent.getAddNodes().remove(clusterProperties.getLocal());
-                    logger.info("Resync:\n{}", JsonUtil.toJson(fileEvent, true));
-                    yfsConfig.fileEventMap.replace(key, version, fileEvent);
-                }
-                if ((fileEvent.getRemoveNodes().size() == 0 && fileEvent.getMetaNodes().contains(clusterProperties.getLocal()) && !FileService.checkExist(FileService.makeMetadataPath(FileService.getPath(clusterProperties, key))))) {
-                    fileEvent.getMetaNodes().remove(clusterProperties.getLocal());
                     logger.info("Resync:\n{}", JsonUtil.toJson(fileEvent, true));
                     yfsConfig.fileEventMap.replace(key, version, fileEvent);
                 }
@@ -84,42 +78,32 @@ public class Watchdog {
     }
 
     /**
-     * 定时扫描本地文件，修复数据。
-     * 1. 检测checksum，修复损坏文件。
-     * 2. 根据本地文件，修复元数据。
+     * 定时扫描本地文件，通过检测checksum，修复损坏文件。
      */
     @Scheduled(initialDelayString = "${yfs.store.watchdog.initial_delay}", fixedDelayString = "${yfs.store.watchdog.repair_delay}")
     public void repair() {
         try {
-            Files.walkFileTree(Paths.get(FileService.getPath(clusterProperties, "")), new SimpleFileVisitor<Path>() {
+            Files.walkFileTree(Paths.get(FileService.getFullPath(clusterProperties, "")), new SimpleFileVisitor<Path>() {
                 @Override
                 public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
                     if (!Files.isHidden(file)) {
-                        String filePath = FileService.getRelativePath(clusterProperties, file.toString());
-                        String originFilePath = FileService.makeFilePath(filePath);
+                        String relativePath = FileService.getRelativePath(clusterProperties, file.toString());
                         try {
                             String checksum = String.valueOf(FileUtils.checksumCRC32(file.toFile()));
-                            Versioned<FileEvent> fileEventVersioned = yfsConfig.fileEventMap.get(originFilePath);
+                            Versioned<FileEvent> fileEventVersioned = yfsConfig.fileEventMap.get(relativePath);
                             if (fileEventVersioned != null) {
                                 FileEvent fileEvent = fileEventVersioned.value();
-                                if (FileService.verifyMetadataPath(filePath)) {
-                                    if (!fileEvent.getMetaCrc32().equals(checksum)) {
-                                        fileEvent.getMetaNodes().remove(clusterProperties.getLocal());
-                                        yfsConfig.fileEventMap.replace(originFilePath, fileEventVersioned.version(), fileEvent);
-                                    }
-                                } else {
-                                    if (!fileEvent.getFileCrc32().equals(checksum)) {
-                                        fileEvent.getAddNodes().remove(clusterProperties.getLocal());
-                                        yfsConfig.fileEventMap.replace(originFilePath, fileEventVersioned.version(), fileEvent);
-                                    }
+                                if (!fileEvent.getFileCrc32().equals(checksum)) {
+                                    fileEvent.getAddNodes().remove(clusterProperties.getLocal());
+                                    yfsConfig.fileEventMap.replace(relativePath, fileEventVersioned.version(), fileEvent);
                                 }
                             } else {
-                                Versioned<RepairEvent> repairEventVersioned = yfsConfig.repairEventMap.get(filePath);
+                                Versioned<RepairEvent> repairEventVersioned = yfsConfig.repairEventMap.get(relativePath);
                                 if (repairEventVersioned == null) {
                                     HashMap map = Maps.newHashMap();
                                     map.put(checksum, Sets.newHashSet(clusterProperties.getLocal()));
                                     RepairEvent repairEvent = new RepairEvent(new Date().getTime(), map);
-                                    yfsConfig.repairEventMap.putIfAbsent(filePath, repairEvent);
+                                    yfsConfig.repairEventMap.putIfAbsent(relativePath, repairEvent);
                                 } else {
                                     Set<String> existNodes = yfsConfig.makeRepairExistNode.apply(repairEventVersioned.value().getRepairInfo());
                                     if (!existNodes.contains(clusterProperties.getLocal())) {
@@ -128,18 +112,14 @@ public class Watchdog {
                                             nodes = new HashSet<>();
                                         }
                                         nodes.add(clusterProperties.getLocal());
-                                        yfsConfig.repairEventMap.replace(filePath, repairEventVersioned.version(), repairEventVersioned.value());
+                                        yfsConfig.repairEventMap.replace(relativePath, repairEventVersioned.version(), repairEventVersioned.value());
                                     } else if (existNodes.size() == clusterProperties.getStore().getNode().size()) {
-                                        if (new Date().getTime() - repairEventVersioned.value().getCreateTime() > clusterProperties.getStore().getWatchdog().getRepair_delay() * 3) {
-                                            yfsConfig.repairEventMap.remove(filePath);
-                                        } else {
-                                            yfsConfig.repairEventMap.replace(filePath, repairEventVersioned.version(), repairEventVersioned.value());
-                                        }
+                                        yfsConfig.repairEventMap.replace(relativePath, repairEventVersioned.version(), repairEventVersioned.value());
                                     }
                                 }
                             }
                         } catch (Exception e) {
-                            logger.warn("Repair {} failure", filePath, e);
+                            logger.warn("Repair {} failure", relativePath, e);
                         }
                     }
                     return super.visitFile(file, attrs);

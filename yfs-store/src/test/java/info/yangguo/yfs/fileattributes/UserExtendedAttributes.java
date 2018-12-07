@@ -128,7 +128,7 @@ public class UserExtendedAttributes {
 
         try {
             view.write(name, Charset.defaultCharset().encode(value));
-        } catch (IOException ex) {
+        } catch (Exception ex) {
             System.out.printf("could not set attr '%s=%s' for %s%n%s%n", name, value, file, ex);
         }
     }

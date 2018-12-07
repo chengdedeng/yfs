@@ -31,17 +31,9 @@ public class FileEvent implements Serializable {
      */
     private String fileCrc32;
     /**
-     * metadata file checksum by crc32
-     */
-    private String metaCrc32;
-    /**
      * file同步节点
      */
     private List<String> addNodes = new ArrayList<>();
-    /**
-     * metadata file同步节点
-     */
-    private List<String> metaNodes = new ArrayList<>();
     /**
      * 文件已移除的node
      */

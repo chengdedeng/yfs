@@ -50,6 +50,7 @@ import org.springframework.stereotype.Component;
 import java.io.File;
 import java.util.*;
 import java.util.concurrent.CountDownLatch;
+import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -145,7 +146,7 @@ public class YfsConfig {
         HashMap<String, HashSet<String>> newEvent = newValue.value().getRepairInfo();
         Set<String> existNodes = makeRepairExistNode.apply(newEvent);
         if (!existNodes.contains(clusterProperties.getLocal())) {
-            String fullPath = FileService.getPath(clusterProperties, key);
+            String fullPath = FileService.getFullPath(clusterProperties, key);
             if (FileService.checkExist(fullPath)) {
                 try {
                     String crc32 = String.valueOf(FileUtils.checksumCRC32(new File(fullPath)));
@@ -217,8 +218,7 @@ public class YfsConfig {
                 case INSERT:
                     Versioned<FileEvent> insertValue = event.newValue();
                     FileEvent insertEvent = insertValue.value();
-                    if (!insertEvent.getAddNodes().contains(clusterProperties.getLocal())
-                            || !insertEvent.getMetaNodes().contains(clusterProperties.getLocal())) {
+                    if (!insertEvent.getAddNodes().contains(clusterProperties.getLocal())) {
                         logger.info("{} {}:\n{}",
                                 MapEvent.Type.INSERT.name(),
                                 key,
@@ -232,10 +232,9 @@ public class YfsConfig {
                     FileEvent newFileEvent = newValue.value();
                     FileEvent oldFileEvent = oldValue.value();
                     List<String> addNodes = newFileEvent.getAddNodes();
-                    List<String> metaNodes = newFileEvent.getMetaNodes();
                     List<String> removeNodes = newFileEvent.getRemoveNodes();
                     if (removeNodes.size() == 0
-                            && (!addNodes.contains(clusterProperties.getLocal()) || !metaNodes.contains(clusterProperties.getLocal()))) {
+                            && !addNodes.contains(clusterProperties.getLocal())) {
                         logger.info("{} {}:\noldValue:{}\nnewValue:{}",
                                 MapEvent.Type.UPDATE.name(),
                                 key,
@@ -260,9 +259,6 @@ public class YfsConfig {
                     if (removeNodes.size() == 0
                             && addNodes.size() > 1
                             && clusterProperties.getLocal().equals(addNodes.get(0))
-                            && metaNodes.size() > 1
-                            && clusterProperties.getLocal().equals(metaNodes.get(0))
-                            && addNodes.size() == metaNodes.size()
                     ) {
                         CountDownLatch latch = cache.getIfPresent(event.key());
                         if (latch != null) {
@@ -294,76 +290,35 @@ public class YfsConfig {
                     }
                     break;
                 case UPDATE:
-                    Versioned<RepairEvent> versionedUpdateEventNewValue = event.newValue();
-                    Set<String> updateExistNodes = makeRepairExistNode.apply(versionedUpdateEventNewValue.value().getRepairInfo());
+                    Versioned<RepairEvent> versionedRepairEventNewValue = event.newValue();
+                    Set<String> updateExistNodes = makeRepairExistNode.apply(versionedRepairEventNewValue.value().getRepairInfo());
                     if (!updateExistNodes.contains(clusterProperties.getLocal())) {
-                        repairEventMap.replace(key, versionedUpdateEventNewValue.version(), makeReapirEvent.apply(event));
+                        repairEventMap.replace(key, versionedRepairEventNewValue.version(), makeReapirEvent.apply(event));
                     } else {
-                        //所有节点投票完成之后，才能判定checksum。由于并发，所以要先判断relationkey是否已经删除。
                         if (updateExistNodes.size() == clusterProperties.getStore().getNode().size()) {
-                            String relationKey = null;
-                            Versioned<RepairEvent> versionedRelationRepairValue = null;
-                            Pair<String, Versioned<RepairEvent>> fileRepairInfo = null;
-                            Pair<String, Versioned<RepairEvent>> metaRepairInfo = null;
-
-                            //必须file和metadata都投票完成，才能修复。
-                            if (FileService.verifyMetadataPath(key)) {
-                                relationKey = FileService.makeFilePath(key);
-                                versionedRelationRepairValue = repairEventMap.get(relationKey);
-                                fileRepairInfo = new ImmutablePair<>(relationKey, versionedRelationRepairValue);
-                                metaRepairInfo = new ImmutablePair<>(key, versionedUpdateEventNewValue);
-                            } else {
-                                relationKey = FileService.makeMetadataPath(key);
-                                versionedRelationRepairValue = repairEventMap.get(relationKey);
-                                fileRepairInfo = new ImmutablePair<>(key, versionedUpdateEventNewValue);
-                                metaRepairInfo = new ImmutablePair<>(relationKey, versionedRelationRepairValue);
-                            }
-                            if (fileRepairInfo.getRight() != null && metaRepairInfo.getRight() != null) {
-                                Set<String> existNodes2 = makeRepairExistNode.apply(versionedRelationRepairValue.value().getRepairInfo());
-                                if (existNodes2.size() == clusterProperties.getStore().getNode().size()) {
-                                    Optional<ImmutablePair<String, Integer>> fileChecksum = fileRepairInfo.getRight().value().getRepairInfo().entrySet().stream()
-                                            .filter(entry -> {
-                                                if (entry.getKey() == null) {
-                                                    return false;
-                                                } else {
-                                                    return true;
-                                                }
-                                            })
-                                            .map(entry -> new ImmutablePair<String, Integer>(entry.getKey(), entry.getValue().size()))
-                                            .max(Comparator.comparing(Pair::getValue));
-                                    Optional<ImmutablePair<String, Integer>> metaChecksum = metaRepairInfo.getRight().value().getRepairInfo().entrySet().stream()
-                                            .filter(entry -> {
-                                                if (entry.getKey() == null) {
-                                                    return false;
-                                                } else {
-                                                    return true;
-                                                }
-                                            })
-                                            .map(entry -> new ImmutablePair<String, Integer>(entry.getKey(), entry.getValue().size()))
-                                            .max(Comparator.comparing(Pair::getValue));
-
-                                    if (fileChecksum.isPresent() && metaChecksum.isPresent()) {
-                                        FileEvent fileEvent = new FileEvent();
-                                        fileEvent.setFileCrc32(fileChecksum.get().getLeft());
-                                        fileEvent.getAddNodes().addAll(fileRepairInfo.getRight().value().getRepairInfo().get(fileChecksum.get().getLeft()));
-                                        fileEvent.setMetaCrc32(metaChecksum.get().getLeft());
-                                        fileEvent.getMetaNodes().addAll(metaRepairInfo.getRight().value().getRepairInfo().get(metaChecksum.get().getLeft()));
-                                        if (fileEventMap.putIfAbsent(fileRepairInfo.getLeft(), fileEvent) == null) {
-                                            repairEventMap.remove(fileRepairInfo.getLeft());
-                                            repairEventMap.remove(metaRepairInfo.getLeft());
-                                            logger.warn("Repair {} success", fileRepairInfo.getLeft());
+                            versionedRepairEventNewValue.value().getRepairInfo().entrySet().stream()
+                                    .filter(entry -> {
+                                        if (entry.getKey() == null) {
+                                            return false;
+                                        } else {
+                                            return true;
                                         }
-                                    }
-                                }
-                            }
+                                    })
+                                    .map(entry -> new ImmutablePair<String, Integer>(entry.getKey(), entry.getValue().size()))
+                                    .max(Comparator.comparing(Pair::getValue))
+                                    .ifPresent(new Consumer<ImmutablePair<String, Integer>>() {
+                                        @Override
+                                        public void accept(ImmutablePair<String, Integer> pair) {
+                                            FileEvent fileEvent = new FileEvent();
+                                            fileEvent.setFileCrc32(pair.getLeft());
+                                            fileEvent.getAddNodes().addAll(versionedRepairEventNewValue.value().getRepairInfo().get(pair.getLeft()));
+                                            if (fileEventMap.putIfAbsent(key, fileEvent) == null) {
+                                                repairEventMap.remove(key);
+                                                logger.warn("Repair {} success", key);
+                                            }
+                                        }
+                                    });
                         }
-                    }
-                    break;
-                case REMOVE:
-                    String fileKey = FileService.makeFilePath(key);
-                    if (!fileEventMap.containsKey(fileKey)) {
-                        FileService.delete(clusterProperties, fileKey);
-                        logger.warn("Repair {} failure", fileKey);
                     }
                     break;
                 default:
@@ -407,7 +362,6 @@ public class YfsConfig {
     private void syncFile(ClusterProperties clusterProperties, String fileRelativePath, Versioned<FileEvent> fileEventVersioned, MapEvent.Type type) {
         boolean isSendEvent = false;
         FileEvent fileEvent = fileEventVersioned.value();
-        String metaRelativePath = FileService.makeMetadataPath(fileRelativePath);
         if (fileEvent.getFileCrc32() != null && !fileEvent.getAddNodes().contains(clusterProperties.getLocal())) {
             for (String addNode : fileEvent.getAddNodes()) {
                 try {
@@ -419,25 +373,8 @@ public class YfsConfig {
                     isSendEvent = true;
                     break;
                 } catch (Exception e) {
-                    FileService.deleteFile(clusterProperties, fileRelativePath);
+                    FileService.delete(clusterProperties, fileRelativePath);
                     logger.warn("Failed to sync {}", fileRelativePath, e);
-                }
-            }
-        }
-
-        if (fileEvent.getMetaCrc32() != null && !fileEvent.getMetaNodes().contains(clusterProperties.getLocal())) {
-            for (String metaNode : fileEvent.getMetaNodes()) {
-                try {
-                    ClusterProperties.ClusterNode clusterNode = storeNodeMap.apply(clusterProperties).get(metaNode);
-                    String fileUrl = "http://" + clusterNode.getIp() + ":" + clusterNode.getHttp_port() + "/" + metaRelativePath;
-
-                    FileService.store(clusterProperties, metaRelativePath, fileUrl, fileEvent.getMetaCrc32());
-                    fileEvent.getMetaNodes().add(clusterProperties.getLocal());
-                    isSendEvent = true;
-                    break;
-                } catch (Exception e) {
-                    FileService.deleteMeta(clusterProperties, fileRelativePath);
-                    logger.warn("Failed to sync {}", metaRelativePath, e);
                 }
             }
         }
