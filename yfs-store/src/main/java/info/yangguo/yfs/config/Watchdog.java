@@ -58,18 +58,18 @@ public class Watchdog {
      */
     @Scheduled(initialDelayString = "${yfs.store.watchdog.initial_delay}", fixedDelayString = "${yfs.store.watchdog.fixed_delay}")
     public void watchFile() {
-        yfsConfig.fileEventMap.entrySet().parallelStream().forEach(entry -> {
+        yfsConfig.fileEventMap.entrySet().stream().forEach(entry -> {
             String key = entry.getKey();
             FileEvent fileEvent = entry.getValue().value();
             long version = entry.getValue().version();
             if ((fileEvent.getRemoveNodes().size() > 0 && !fileEvent.getRemoveNodes().contains(clusterProperties.getLocal()))
                     || (fileEvent.getRemoveNodes().size() == 0 && !fileEvent.getAddNodes().contains(clusterProperties.getLocal()))) {
-                logger.info("Resync:\n{}", JsonUtil.toJson(fileEvent, true));
+                logger.info("Resync {}\n{}", key, JsonUtil.toJson(fileEvent, true));
                 yfsConfig.fileEventMap.replace(key, version, fileEvent);
             } else {
                 if ((fileEvent.getRemoveNodes().size() == 0 && fileEvent.getAddNodes().contains(clusterProperties.getLocal())) && !FileService.checkExist(FileService.getFullPath(clusterProperties, key))) {
                     fileEvent.getAddNodes().remove(clusterProperties.getLocal());
-                    logger.info("Resync:\n{}", JsonUtil.toJson(fileEvent, true));
+                    logger.info("Resync {}\n{}", key, JsonUtil.toJson(fileEvent, true));
                     yfsConfig.fileEventMap.replace(key, version, fileEvent);
                 }
             }

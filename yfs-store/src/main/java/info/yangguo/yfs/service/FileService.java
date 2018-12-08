@@ -125,11 +125,13 @@ public class FileService {
 
         try {
             fileEvent.setFileCrc32(store(clusterProperties, relativePath, commonsMultipartFile.getInputStream()));
-            String serverMd5 = verifyFileByMd5(clusterProperties, relativePath);
             String clientMd5 = httpServletRequest.getHeader(HttpHeaderNames.CONTENT_MD5.toString());
-            if (clientMd5 != null) {
-                if (!clientMd5.equals(serverMd5)) {
-                    throw new IOException("md5 does't match");
+            if (StringUtils.isNotBlank(clientMd5)) {
+                String serverMd5 = verifyFileByMd5(clusterProperties, relativePath);
+                if (clientMd5 != null) {
+                    if (!clientMd5.equals(serverMd5)) {
+                        throw new IOException("md5 does't match");
+                    }
                 }
             }
         } catch (IOException e) {
@@ -197,7 +199,7 @@ public class FileService {
         }
         FileUtils.copyInputStreamToFile(inputStream, file);
 
-        return String.valueOf(FileUtils.checksumCRC32(new File(fullPath)));
+        return String.valueOf(FileUtils.checksumCRC32(file));
     }
 
     /**
