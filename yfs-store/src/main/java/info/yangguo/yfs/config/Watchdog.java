@@ -189,6 +189,7 @@ public class Watchdog {
         try {
             Map<String, Member> members = storeAtomix.getMembershipService().getMembers().stream().collect(Collectors.toMap(member -> member.id().id(), member -> member));
             Map<String, ClusterProperties.ClusterNode> clusterNodeMap = yfsConfig.storeNodeMap.apply(clusterProperties);
+            //集群节点数必须大于和等于本地配置节点数，才进行检测。也就是说集群一旦启动，在不停机的情况下，节点数只能等于和大于启动时的节点数。
             if (members.size() >= clusterNodeMap.size()) {
                 //把新节点加入本地配置
                 members

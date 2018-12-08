@@ -49,12 +49,11 @@ public class FileController extends BaseController {
     @RequestMapping(value = "api/file", method = {RequestMethod.POST})
     public Result upload(MultipartFile file, HttpServletRequest httpServletRequest) {
         Result result = new Result();
-        int qos = 2;
         Pair<String, FileEvent> pair = null;
         try {
             CommonsMultipartFile commonsMultipartFile = (CommonsMultipartFile) file;
             pair = FileService.store(clusterProperties, commonsMultipartFile, httpServletRequest);
-            boolean qosResult = EventService.create(clusterProperties, yfsConfig, pair, qos);
+            boolean qosResult = EventService.create(clusterProperties, yfsConfig, pair, clusterProperties.getStore().getNode().size() / 2 + 1);
             if (qosResult == true) {
                 result.setCode(ResultCode.C200.code);
             } else {
