@@ -15,10 +15,6 @@ import java.util.HashSet;
 @AllArgsConstructor
 public class RepairEvent implements Serializable {
     /**
-     * event创建时间
-     */
-    private long createTime;
-    /**
      * 修复所需信息
      */
     HashMap<String, HashSet<String>> repairInfo;

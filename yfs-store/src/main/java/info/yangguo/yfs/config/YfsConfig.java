@@ -219,7 +219,7 @@ public class YfsConfig {
                     Versioned<FileEvent> insertValue = event.newValue();
                     FileEvent insertEvent = insertValue.value();
                     if (!insertEvent.getAddNodes().contains(clusterProperties.getLocal())) {
-                        logger.info("{} {}:\n{}",
+                        logger.info("FileEventMap {} {}:\n{}",
                                 MapEvent.Type.INSERT.name(),
                                 key,
                                 JsonUtil.toJson(insertEvent, true));
@@ -235,14 +235,14 @@ public class YfsConfig {
                     List<String> removeNodes = newFileEvent.getRemoveNodes();
                     if (removeNodes.size() == 0
                             && !addNodes.contains(clusterProperties.getLocal())) {
-                        logger.info("{} {}:\noldValue:{}\nnewValue:{}",
+                        logger.info("FileEventMap {} {}:\noldValue:{}\nnewValue:{}",
                                 MapEvent.Type.UPDATE.name(),
                                 key,
                                 JsonUtil.toJson(oldFileEvent, true),
                                 JsonUtil.toJson(newFileEvent, true));
                         syncFile(clusterProperties, key, newValue, MapEvent.Type.UPDATE);
                     } else if (removeNodes.size() > 0 && !removeNodes.contains(clusterProperties.getLocal())) {
-                        logger.info("{} {}:\noldValue:{}\nnewValue:{}",
+                        logger.info("FileEventMap {} {}:\noldValue:{}\nnewValue:{}",
                                 MapEvent.Type.UPDATE.name(),
                                 key,
                                 JsonUtil.toJson(oldFileEvent, true),
@@ -286,6 +286,10 @@ public class YfsConfig {
                     HashMap<String, HashSet<String>> insertEventValue = versionedInsertEventNewValue.value().getRepairInfo();
                     Set<String> insertExistNodes = makeRepairExistNode.apply(insertEventValue);
                     if (!insertExistNodes.contains(clusterProperties.getLocal())) {
+                        logger.info("RepairEventMap {} {}:\n{}",
+                                MapEvent.Type.INSERT.name(),
+                                key,
+                                JsonUtil.toJson(versionedInsertEventNewValue.value(), true));
                         repairEventMap.replace(key, versionedInsertEventNewValue.version(), makeReapirEvent.apply(event));
                     }
                     break;
@@ -293,6 +297,11 @@ public class YfsConfig {
                     Versioned<RepairEvent> versionedRepairEventNewValue = event.newValue();
                     Set<String> updateExistNodes = makeRepairExistNode.apply(versionedRepairEventNewValue.value().getRepairInfo());
                     if (!updateExistNodes.contains(clusterProperties.getLocal())) {
+                        logger.info("RepairEventMap {} {}:\noldValue:{}\nnewValue:{}",
+                                MapEvent.Type.UPDATE.name(),
+                                key,
+                                JsonUtil.toJson(event.oldValue().value(), true),
+                                JsonUtil.toJson(event.newValue().value(), true));
                         repairEventMap.replace(key, versionedRepairEventNewValue.version(), makeReapirEvent.apply(event));
                     } else {
                         if (updateExistNodes.size() == clusterProperties.getStore().getNode().size()) {

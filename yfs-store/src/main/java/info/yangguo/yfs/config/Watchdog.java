@@ -62,7 +62,9 @@ public class Watchdog {
             String key = entry.getKey();
             FileEvent fileEvent = entry.getValue().value();
             long version = entry.getValue().version();
-            if ((fileEvent.getRemoveNodes().size() > 0 && !fileEvent.getRemoveNodes().contains(clusterProperties.getLocal()))
+            if (fileEvent.getAddNodes().size() == 0) {
+                yfsConfig.fileEventMap.remove(key);
+            } else if ((fileEvent.getRemoveNodes().size() > 0 && !fileEvent.getRemoveNodes().contains(clusterProperties.getLocal()))
                     || (fileEvent.getRemoveNodes().size() == 0 && !fileEvent.getAddNodes().contains(clusterProperties.getLocal()))) {
                 logger.info("Resync {}\n{}", key, JsonUtil.toJson(fileEvent, true));
                 yfsConfig.fileEventMap.replace(key, version, fileEvent);
@@ -88,38 +90,40 @@ public class Watchdog {
                 public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
                     if (!Files.isHidden(file)) {
                         String relativePath = FileService.getRelativePath(clusterProperties, file.toString());
-                        try {
-                            String checksum = String.valueOf(FileUtils.checksumCRC32(file.toFile()));
-                            Versioned<FileEvent> fileEventVersioned = yfsConfig.fileEventMap.get(relativePath);
-                            if (fileEventVersioned != null) {
-                                FileEvent fileEvent = fileEventVersioned.value();
-                                if (!fileEvent.getFileCrc32().equals(checksum)) {
-                                    fileEvent.getAddNodes().remove(clusterProperties.getLocal());
-                                    yfsConfig.fileEventMap.replace(relativePath, fileEventVersioned.version(), fileEvent);
-                                }
-                            } else {
-                                Versioned<RepairEvent> repairEventVersioned = yfsConfig.repairEventMap.get(relativePath);
-                                if (repairEventVersioned == null) {
-                                    HashMap map = Maps.newHashMap();
-                                    map.put(checksum, Sets.newHashSet(clusterProperties.getLocal()));
-                                    RepairEvent repairEvent = new RepairEvent(new Date().getTime(), map);
-                                    yfsConfig.repairEventMap.putIfAbsent(relativePath, repairEvent);
+                        if (!FileService.runningFile.containsKey(relativePath)) {
+                            try {
+                                String checksum = String.valueOf(FileUtils.checksumCRC32(file.toFile()));
+                                Versioned<FileEvent> fileEventVersioned = yfsConfig.fileEventMap.get(relativePath);
+                                if (fileEventVersioned != null) {
+                                    FileEvent fileEvent = fileEventVersioned.value();
+                                    if (!fileEvent.getFileCrc32().equals(checksum)) {
+                                        fileEvent.getAddNodes().remove(clusterProperties.getLocal());
+                                        yfsConfig.fileEventMap.replace(relativePath, fileEventVersioned.version(), fileEvent);
+                                    }
                                 } else {
-                                    Set<String> existNodes = yfsConfig.makeRepairExistNode.apply(repairEventVersioned.value().getRepairInfo());
-                                    if (!existNodes.contains(clusterProperties.getLocal())) {
-                                        Set<String> nodes = repairEventVersioned.value().getRepairInfo().get(checksum);
-                                        if (nodes == null) {
-                                            nodes = new HashSet<>();
+                                    Versioned<RepairEvent> repairEventVersioned = yfsConfig.repairEventMap.get(relativePath);
+                                    if (repairEventVersioned == null) {
+                                        HashMap map = Maps.newHashMap();
+                                        map.put(checksum, Sets.newHashSet(clusterProperties.getLocal()));
+                                        RepairEvent repairEvent = new RepairEvent(map);
+                                        yfsConfig.repairEventMap.putIfAbsent(relativePath, repairEvent);
+                                    } else {
+                                        Set<String> existNodes = yfsConfig.makeRepairExistNode.apply(repairEventVersioned.value().getRepairInfo());
+                                        if (!existNodes.contains(clusterProperties.getLocal())) {
+                                            Set<String> nodes = repairEventVersioned.value().getRepairInfo().get(checksum);
+                                            if (nodes == null) {
+                                                nodes = new HashSet<>();
+                                            }
+                                            nodes.add(clusterProperties.getLocal());
+                                            yfsConfig.repairEventMap.replace(relativePath, repairEventVersioned.version(), repairEventVersioned.value());
+                                        } else if (existNodes.size() == clusterProperties.getStore().getNode().size()) {
+                                            yfsConfig.repairEventMap.replace(relativePath, repairEventVersioned.version(), repairEventVersioned.value());
                                         }
-                                        nodes.add(clusterProperties.getLocal());
-                                        yfsConfig.repairEventMap.replace(relativePath, repairEventVersioned.version(), repairEventVersioned.value());
-                                    } else if (existNodes.size() == clusterProperties.getStore().getNode().size()) {
-                                        yfsConfig.repairEventMap.replace(relativePath, repairEventVersioned.version(), repairEventVersioned.value());
                                     }
                                 }
+                            } catch (Exception e) {
+                                logger.warn("Repair {} failure", relativePath, e);
                             }
-                        } catch (Exception e) {
-                            logger.warn("Repair {} failure", relativePath, e);
                         }
                     }
                     return super.visitFile(file, attrs);

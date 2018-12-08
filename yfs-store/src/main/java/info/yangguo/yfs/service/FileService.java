@@ -59,7 +59,7 @@ import java.util.function.Function;
 
 public class FileService {
     private static Logger logger = LoggerFactory.getLogger(FileService.class);
-    private static Map<String, Long> runningFile = new ConcurrentHashMap<>();
+    public static Map<String, Long> runningFile = new ConcurrentHashMap<>();
     private static HttpClient httpClient;
 
     static {
@@ -124,6 +124,7 @@ public class FileService {
         }
 
         try {
+            runningFile.putIfAbsent(relativePath, new Date().getTime());
             fileEvent.setFileCrc32(store(clusterProperties, relativePath, commonsMultipartFile.getInputStream()));
             String clientMd5 = httpServletRequest.getHeader(HttpHeaderNames.CONTENT_MD5.toString());
             if (StringUtils.isNotBlank(clientMd5)) {
@@ -137,6 +138,8 @@ public class FileService {
         } catch (IOException e) {
             delete(clusterProperties, relativePath);
             throw e;
+        } finally {
+            runningFile.remove(relativePath);
         }
         return new ImmutablePair<>(relativePath, fileEvent);
     }
@@ -153,7 +156,7 @@ public class FileService {
     public static void store(ClusterProperties clusterProperties, String relativePath, String fileUrl, String crc32) throws IOException {
         String fullPath = getFullPath(clusterProperties, relativePath);
 
-        if (runningFile.putIfAbsent(fullPath, new Date().getTime()) == null) {
+        if (runningFile.putIfAbsent(relativePath, new Date().getTime()) == null) {
             try {
                 File file = new File(fullPath);
                 if (file.exists()) {
@@ -174,7 +177,7 @@ public class FileService {
             } catch (Exception e) {
                 throw e;
             } finally {
-                runningFile.remove(fullPath);
+                runningFile.remove(relativePath);
             }
         } else {
             logger.debug("{} in sync", fullPath);
@@ -299,10 +302,12 @@ public class FileService {
      * @param key
      */
     public static void delete(ClusterProperties clusterProperties, String key) {
-        String fullPath = getFullPath(clusterProperties, key);
-        File file = new File(fullPath);
-        if (file.exists())
-            file.delete();
+        if (!runningFile.containsKey(key)) {
+            String fullPath = getFullPath(clusterProperties, key);
+            File file = new File(fullPath);
+            if (file.exists())
+                file.delete();
+        }
     }
 
     /**
