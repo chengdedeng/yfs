@@ -35,7 +35,7 @@ public class FileAttributes {
         return attributes;
     }
 
-    public static void setXattr(Map<String, String> attrs, String fullPath) throws Exception {
+    public static void setXattr(Map<String, String> attrs, String fullPath) throws IOException {
         UserDefinedFileAttributeView view = getAttributeView(fullPath);
 
         for (Map.Entry<String, String> entry : attrs.entrySet()) {
@@ -53,9 +53,9 @@ public class FileAttributes {
     }
 
 
-    public static Map<String, String> getAllXattr(String file) throws IOException {
+    public static Map<String, String> getAllXattr(String fullPath) throws IOException {
         Map<String, String> values = Maps.newHashMap();
-        UserDefinedFileAttributeView view = getAttributeView(file);
+        UserDefinedFileAttributeView view = getAttributeView(fullPath);
         for (String name : view.list()) {
             String value = getAttrValue(view, name);
             values.put(name, value);

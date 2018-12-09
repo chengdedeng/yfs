@@ -20,6 +20,7 @@ import info.yangguo.yfs.common.CommonConstant;
 import info.yangguo.yfs.common.po.FileEvent;
 import info.yangguo.yfs.common.utils.IdMaker;
 import info.yangguo.yfs.config.ClusterProperties;
+import info.yangguo.yfs.config.StandardHeaders;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import org.apache.catalina.connector.ClientAbortException;
 import org.apache.commons.codec.digest.DigestUtils;
@@ -50,12 +51,10 @@ import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 import java.io.*;
 import java.nio.file.attribute.BasicFileAttributes;
-import java.util.Date;
-import java.util.Enumeration;
-import java.util.Map;
-import java.util.Random;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Function;
+import java.util.stream.Collectors;
 
 public class FileService {
     private static Logger logger = LoggerFactory.getLogger(FileService.class);
@@ -112,20 +111,24 @@ public class FileService {
         else
             relativePath = Integer.toHexString(block1) + File.separator + Integer.toHexString(block2) + File.separator + newName;
 
-
-        Map<String, String> userMetadata = Maps.newHashMap();
+        Map<String, String> standardMetas = Maps.newHashMap();
+        Map<String, String> userMetas = Maps.newHashMap();
+        Set<String> standardHeaderNames = Arrays.stream(StandardHeaders.class.getFields()).map(field -> field.getName()).collect(Collectors.toSet());
         Enumeration headerNames = httpServletRequest.getHeaderNames();
         while (headerNames.hasMoreElements()) {
-            String headerName = (String) headerNames.nextElement();
-            if (headerName.startsWith(CommonConstant.xHeaderPrefix)) {
+            String headerName = ((String) headerNames.nextElement()).toLowerCase();
+            if (standardHeaderNames.contains(headerName)) {
                 String headerValue = httpServletRequest.getHeader(headerName);
-                userMetadata.put(headerName, headerValue);
+                standardMetas.put(headerName, headerValue);
+            } else if (headerName.startsWith(CommonConstant.xHeaderPrefix)) {
+                String headerValue = httpServletRequest.getHeader(headerName);
+                userMetas.put(headerName, headerValue);
             }
         }
 
         try {
             runningFile.putIfAbsent(relativePath, new Date().getTime());
-            fileEvent.setFileCrc32(store(clusterProperties, relativePath, commonsMultipartFile.getInputStream()));
+            fileEvent.setFileCrc32(store(clusterProperties, relativePath, commonsMultipartFile.getInputStream(), standardMetas, userMetas));
             String clientMd5 = httpServletRequest.getHeader(HttpHeaderNames.CONTENT_MD5.toString());
             if (StringUtils.isNotBlank(clientMd5)) {
                 String serverMd5 = verifyFileByMd5(clusterProperties, relativePath);
@@ -166,8 +169,23 @@ public class FileService {
                 }
                 HttpUriRequest fileRequest = new HttpGet(fileUrl);
                 HttpResponse fileResponse = httpClient.execute(fileRequest);
+
+                Map<String, String> standardMetas = Maps.newHashMap();
+                Map<String, String> userMetas = Maps.newHashMap();
+                Set<String> standardHeaderNames = Arrays.stream(StandardHeaders.class.getFields()).map(field -> field.getName()).collect(Collectors.toSet());
+                Arrays.stream(fileResponse.getAllHeaders()).forEach(header -> {
+                    String headerName = header.getName().toLowerCase();
+                    if (standardHeaderNames.contains(headerName)) {
+                        String headerValue = header.getValue();
+                        standardMetas.put(headerName, headerValue);
+                    } else if (headerName.startsWith(CommonConstant.xHeaderPrefix)) {
+                        String headerValue = header.getName();
+                        userMetas.put(headerName, headerValue);
+                    }
+                });
+
                 if (200 == fileResponse.getStatusLine().getStatusCode()) {
-                    if (!crc32.equals(store(clusterProperties, relativePath, fileResponse.getEntity().getContent()))) {
+                    if (!crc32.equals(store(clusterProperties, relativePath, fileResponse.getEntity().getContent(), standardMetas, userMetas))) {
                         throw new RuntimeException("File[" + relativePath + "]'s crc32 doesn't match");
                     }
                     logger.debug("Success to store {}", relativePath);
@@ -192,7 +210,7 @@ public class FileService {
      * @param inputStream
      * @throws Exception
      */
-    public static String store(ClusterProperties clusterProperties, String relativePath, InputStream inputStream) throws IOException {
+    public static String store(ClusterProperties clusterProperties, String relativePath, InputStream inputStream, Map<String, String> standardMetas, Map<String, String> userMetas) throws IOException {
         String fullPath = getFullPath(clusterProperties, relativePath);
         File file = new File(fullPath);
         if (file.exists()) {
@@ -201,6 +219,7 @@ public class FileService {
             file = new File(fullPath);
         }
         FileUtils.copyInputStreamToFile(inputStream, file);
+        FileAttributes.setXattr(userMetas, fullPath);
 
         return String.valueOf(FileUtils.checksumCRC32(file));
     }
@@ -219,6 +238,13 @@ public class FileService {
 
         //支持范围请求
         response.setHeader(HttpHeaderNames.ACCEPT_RANGES.toString(), "bytes");
+        //添加xattr
+        FileAttributes.getAllXattr(FileService.getFullPath(clusterProperties, relativePath))
+                .entrySet()
+                .stream()
+                .forEach(entry -> {
+                    response.setHeader(entry.getKey(), entry.getValue());
+                });
 
         String[] ranges = null;
         //http协议支持单一范围和多重范围查询
