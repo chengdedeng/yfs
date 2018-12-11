@@ -211,6 +211,8 @@ public class YfsConfig {
                         .withReadConsistency(ReadConsistency.LINEARIZABLE)
                         .build())
                 .withSerializer(CommonConstant.protocolSerializer)
+                .withCacheEnabled()
+                .withCacheSize(100000)
                 .build();
         fileEventMap.addListener(event -> {
             String key = event.key();
@@ -277,6 +279,7 @@ public class YfsConfig {
                         .withReadConsistency(ReadConsistency.LINEARIZABLE)
                         .build())
                 .withSerializer(CommonConstant.protocolSerializer)
+                .withCacheEnabled()
                 .build();
         repairEventMap.addListener(event -> {
             String key = event.key();

@@ -77,7 +77,12 @@ public class FileAttributes {
     }
 
     private static UserDefinedFileAttributeView getAttributeView(String fullPath) {
-        return Files.getFileAttributeView(Paths.get(fullPath),
+        UserDefinedFileAttributeView view = Files.getFileAttributeView(Paths.get(fullPath),
                 UserDefinedFileAttributeView.class);
+        if(view==null){
+            throw new RuntimeException("The attribute view type is not available");
+        }else {
+            return view;
+        }
     }
 }

@@ -23,9 +23,11 @@ import info.yangguo.yfs.dto.ResultCode;
 import info.yangguo.yfs.service.EventService;
 import info.yangguo.yfs.service.FileService;
 import io.atomix.utils.time.Versioned;
+import io.netty.handler.codec.http.HttpHeaderNames;
 import io.swagger.annotations.ApiOperation;
 import org.apache.commons.lang3.tuple.Pair;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
@@ -98,6 +100,8 @@ public class FileController extends BaseController {
         try {
             FileService.getFile(clusterProperties, path, request, response);
         } catch (Exception e) {
+            response.setStatus(HttpStatus.SERVICE_UNAVAILABLE.value());
+            response.setHeader(HttpHeaderNames.CONTENT_LENGTH.toString(), "0");
             logger.error("download file:{}", path, e);
         }
     }
