@@ -111,7 +111,7 @@ public class FileService {
         else
             relativePath = Integer.toHexString(block1) + File.separator + Integer.toHexString(block2) + File.separator + newName;
 
-        Map<String, String> standardMetas = Maps.newHashMap();
+        Map<String, String> systemMetas = Maps.newHashMap();
         Map<String, String> userMetas = Maps.newHashMap();
         Set<String> standardHeaderNames = Arrays.stream(StandardHeaders.class.getFields()).map(field -> field.getName()).collect(Collectors.toSet());
         Enumeration headerNames = httpServletRequest.getHeaderNames();
@@ -119,7 +119,7 @@ public class FileService {
             String headerName = ((String) headerNames.nextElement()).toLowerCase();
             if (standardHeaderNames.contains(headerName)) {
                 String headerValue = httpServletRequest.getHeader(headerName);
-                standardMetas.put(headerName, headerValue);
+                userMetas.put(headerName, headerValue);
             } else if (headerName.startsWith(CommonConstant.xHeaderPrefix)) {
                 String headerValue = httpServletRequest.getHeader(headerName);
                 userMetas.put(headerName, headerValue);
@@ -128,7 +128,7 @@ public class FileService {
 
         try {
             runningFile.putIfAbsent(relativePath, new Date().getTime());
-            fileEvent.setFileCrc32(store(clusterProperties, relativePath, commonsMultipartFile.getInputStream(), standardMetas, userMetas));
+            store(clusterProperties, relativePath, commonsMultipartFile.getInputStream(), systemMetas, userMetas);
             String clientMd5 = httpServletRequest.getHeader(HttpHeaderNames.CONTENT_MD5.toString());
             if (StringUtils.isNotBlank(clientMd5)) {
                 String serverMd5 = verifyFileByMd5(clusterProperties, relativePath);
@@ -154,40 +154,38 @@ public class FileService {
      * @param clusterProperties
      * @param relativePath
      * @param fileUrl
-     * @param crc32
      */
-    public static void store(ClusterProperties clusterProperties, String relativePath, String fileUrl, String crc32) throws IOException {
+    public static void store(ClusterProperties clusterProperties, String relativePath, String fileUrl) throws IOException {
         String fullPath = getFullPath(clusterProperties, relativePath);
 
         if (runningFile.putIfAbsent(relativePath, new Date().getTime()) == null) {
             try {
                 File file = new File(fullPath);
                 if (file.exists()) {
-                    if (crc32.equals(String.valueOf(FileUtils.checksumCRC32(new File(fullPath))))) {
-                        return;
-                    }
+                    return;
                 }
                 HttpUriRequest fileRequest = new HttpGet(fileUrl);
                 HttpResponse fileResponse = httpClient.execute(fileRequest);
 
-                Map<String, String> standardMetas = Maps.newHashMap();
+                Map<String, String> systemMetas = Maps.newHashMap();
                 Map<String, String> userMetas = Maps.newHashMap();
                 Set<String> standardHeaderNames = Arrays.stream(StandardHeaders.class.getFields()).map(field -> field.getName()).collect(Collectors.toSet());
                 Arrays.stream(fileResponse.getAllHeaders()).forEach(header -> {
                     String headerName = header.getName().toLowerCase();
                     if (standardHeaderNames.contains(headerName)) {
                         String headerValue = header.getValue();
-                        standardMetas.put(headerName, headerValue);
-                    } else if (headerName.startsWith(CommonConstant.xHeaderPrefix)) {
-                        String headerValue = header.getName();
                         userMetas.put(headerName, headerValue);
+                    } else if (headerName.startsWith(CommonConstant.xHeaderPrefix)) {
+                        String headerValue = header.getValue();
+                        userMetas.put(headerName, headerValue);
+                    } else if (headerName.equals(CommonConstant.CRC32)) {
+                        String headerValue = header.getValue();
+                        userMetas.put(CommonConstant.CRC32, headerValue);
                     }
                 });
 
                 if (200 == fileResponse.getStatusLine().getStatusCode()) {
-                    if (!crc32.equals(store(clusterProperties, relativePath, fileResponse.getEntity().getContent(), standardMetas, userMetas))) {
-                        throw new RuntimeException("File[" + relativePath + "]'s crc32 doesn't match");
-                    }
+                    store(clusterProperties, relativePath, fileResponse.getEntity().getContent(), systemMetas, userMetas);
                     logger.debug("Success to store {}", relativePath);
                 } else {
                     throw new RuntimeException("Failed to get file " + relativePath);
@@ -210,7 +208,7 @@ public class FileService {
      * @param inputStream
      * @throws Exception
      */
-    public static String store(ClusterProperties clusterProperties, String relativePath, InputStream inputStream, Map<String, String> standardMetas, Map<String, String> userMetas) throws IOException {
+    public static void store(ClusterProperties clusterProperties, String relativePath, InputStream inputStream, Map<String, String> systemMetas, Map<String, String> userMetas) throws IOException {
         String fullPath = getFullPath(clusterProperties, relativePath);
         File file = new File(fullPath);
         if (file.exists()) {
@@ -219,9 +217,16 @@ public class FileService {
             file = new File(fullPath);
         }
         FileUtils.copyInputStreamToFile(inputStream, file);
+        String crc32 = String.valueOf(FileUtils.checksumCRC32(file));
+        if (systemMetas.containsKey(CommonConstant.CRC32)) {
+            if (!systemMetas.get(CommonConstant.CRC32).equals(crc32)) {
+                throw new RuntimeException("File[" + relativePath + "]'s crc32 doesn't match");
+            }
+        } else {
+            systemMetas.put(CommonConstant.CRC32, crc32);
+        }
+        FileAttributes.setXattr(systemMetas, fullPath);
         FileAttributes.setXattr(userMetas, fullPath);
-
-        return String.valueOf(FileUtils.checksumCRC32(file));
     }
 
     /**

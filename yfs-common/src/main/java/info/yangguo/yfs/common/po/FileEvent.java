@@ -27,10 +27,6 @@ import java.util.List;
 @AllArgsConstructor
 public class FileEvent implements Serializable {
     /**
-     * file checksum by crc32
-     */
-    private String fileCrc32;
-    /**
      * file同步节点
      */
     private List<String> addNodes = new ArrayList<>();

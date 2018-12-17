@@ -15,13 +15,12 @@
  */
 package info.yangguo.yfs.config;
 
-import com.google.common.collect.Maps;
-import com.google.common.collect.Sets;
 import info.yangguo.yfs.common.CommonConstant;
 import info.yangguo.yfs.common.po.FileEvent;
-import info.yangguo.yfs.common.po.RepairEvent;
 import info.yangguo.yfs.common.po.StoreInfo;
 import info.yangguo.yfs.common.utils.JsonUtil;
+import info.yangguo.yfs.common.utils.PropertiesUtil;
+import info.yangguo.yfs.service.FileAttributes;
 import info.yangguo.yfs.service.FileService;
 import io.atomix.cluster.Member;
 import io.atomix.core.Atomix;
@@ -38,7 +37,9 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.file.*;
 import java.nio.file.attribute.BasicFileAttributes;
-import java.util.*;
+import java.util.Date;
+import java.util.Iterator;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 @Component
@@ -80,44 +81,31 @@ public class Watchdog {
     }
 
     /**
-     * 定时扫描本地文件，通过检测checksum，修复损坏文件。
+     * 定时扫描本地文件，通过检测checksum，判断本地文件是否损坏。
      */
     @Scheduled(initialDelayString = "${yfs.store.watchdog.initial_delay}", fixedDelayString = "${yfs.store.watchdog.repair_delay}")
-    public void repair() {
+    public void repairFile() {
         try {
             Files.walkFileTree(Paths.get(FileService.getFullPath(clusterProperties, "")), new SimpleFileVisitor<Path>() {
                 @Override
                 public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
                     if (!Files.isHidden(file)) {
                         String relativePath = FileService.getRelativePath(clusterProperties, file.toString());
+                        String fullPath = FileService.getFullPath(clusterProperties, relativePath);
                         if (!FileService.runningFile.containsKey(relativePath)) {
                             try {
                                 String checksum = String.valueOf(FileUtils.checksumCRC32(file.toFile()));
-                                Versioned<FileEvent> fileEventVersioned = yfsConfig.fileEventMap.get(relativePath);
-                                if (fileEventVersioned != null) {
-                                    FileEvent fileEvent = fileEventVersioned.value();
-                                    if (!fileEvent.getFileCrc32().equals(checksum)) {
+                                String crc32 = FileAttributes.getXattr(CommonConstant.CRC32, fullPath);
+                                if (!checksum.equals(crc32)) {
+                                    FileService.delete(clusterProperties, relativePath);
+                                    Versioned<FileEvent> fileEventVersioned = yfsConfig.fileEventMap.get(relativePath);
+                                    if (fileEventVersioned != null) {
+                                        FileEvent fileEvent = fileEventVersioned.value();
                                         fileEvent.getAddNodes().remove(clusterProperties.getLocal());
-                                        yfsConfig.fileEventMap.replace(relativePath, fileEventVersioned.version(), fileEvent);
-                                    }
-                                } else {
-                                    Versioned<RepairEvent> repairEventVersioned = yfsConfig.repairEventMap.get(relativePath);
-                                    if (repairEventVersioned == null) {
-                                        HashMap map = Maps.newHashMap();
-                                        map.put(checksum, Sets.newHashSet(clusterProperties.getLocal()));
-                                        RepairEvent repairEvent = new RepairEvent(map);
-                                        yfsConfig.repairEventMap.putIfAbsent(relativePath, repairEvent);
-                                    } else {
-                                        Set<String> existNodes = yfsConfig.makeRepairExistNode.apply(repairEventVersioned.value().getRepairInfo());
-                                        if (!existNodes.contains(clusterProperties.getLocal())) {
-                                            Set<String> nodes = repairEventVersioned.value().getRepairInfo().get(checksum);
-                                            if (nodes == null) {
-                                                nodes = new HashSet<>();
-                                            }
-                                            nodes.add(clusterProperties.getLocal());
-                                            yfsConfig.repairEventMap.replace(relativePath, repairEventVersioned.version(), repairEventVersioned.value());
-                                        } else if (existNodes.size() == clusterProperties.getStore().getNode().size()) {
-                                            yfsConfig.repairEventMap.replace(relativePath, repairEventVersioned.version(), repairEventVersioned.value());
+                                        if (fileEvent.getAddNodes().size() == 0) {
+                                            yfsConfig.fileEventMap.remove(relativePath);
+                                        } else {
+                                            yfsConfig.fileEventMap.replace(relativePath, fileEventVersioned.version(), fileEvent);
                                         }
                                     }
                                 }
@@ -132,7 +120,50 @@ public class Watchdog {
         } catch (Exception e) {
             logger.error("Repair failure", e);
         }
-        logger.debug("Repair**************************watchdog");
+        logger.debug("Repair file**************************watchdog");
+    }
+
+
+    /**
+     * 扫描本地文件，通过检测checksum，修复元数据。
+     */
+    @Scheduled(initialDelayString = "${yfs.store.watchdog.initial_delay}", fixedDelayString = "${yfs.store.watchdog.repair_delay}")
+    public void repairMeta() {
+        Map<String, String> pros = PropertiesUtil.getProperty("application.properties");
+        if (Boolean.valueOf(pros.get("yfs.store.metadata.repair"))) {
+            try {
+                Files.walkFileTree(Paths.get(FileService.getFullPath(clusterProperties, "")), new SimpleFileVisitor<Path>() {
+                    @Override
+                    public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
+                        if (!Files.isHidden(file)) {
+                            String relativePath = FileService.getRelativePath(clusterProperties, file.toString());
+                            String fullPath = FileService.getFullPath(clusterProperties, relativePath);
+                            if (!FileService.runningFile.containsKey(relativePath)) {
+                                try {
+                                    if (!yfsConfig.fileEventMap.containsKey(relativePath)) {
+                                        String checksum = String.valueOf(FileUtils.checksumCRC32(file.toFile()));
+                                        String crc32 = FileAttributes.getXattr(CommonConstant.CRC32, fullPath);
+                                        if (checksum.equals(crc32)) {
+                                            FileEvent fileEvent = new FileEvent();
+                                            fileEvent.getAddNodes().add(clusterProperties.getLocal());
+                                            yfsConfig.fileEventMap.putIfAbsent(relativePath, fileEvent);
+                                        } else {
+                                            FileService.delete(clusterProperties, relativePath);
+                                        }
+                                    }
+                                } catch (Exception e) {
+                                    logger.warn("Repair {} failure", relativePath, e);
+                                }
+                            }
+                        }
+                        return super.visitFile(file, attrs);
+                    }
+                });
+            } catch (Exception e) {
+                logger.error("Repair failure", e);
+            }
+            logger.debug("Repair meta**************************watchdog");
+        }
     }
 
     /**

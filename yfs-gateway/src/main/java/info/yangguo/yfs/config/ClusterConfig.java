@@ -17,7 +17,7 @@ package info.yangguo.yfs.config;
 
 import info.yangguo.yfs.common.CommonConstant;
 import info.yangguo.yfs.common.po.StoreInfo;
-import info.yangguo.yfs.util.PropertiesUtil;
+import info.yangguo.yfs.common.utils.PropertiesUtil;
 import io.atomix.cluster.Member;
 import io.atomix.cluster.discovery.BootstrapDiscoveryProvider;
 import io.atomix.core.Atomix;

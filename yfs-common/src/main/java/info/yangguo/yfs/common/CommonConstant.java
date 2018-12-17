@@ -16,7 +16,6 @@
 package info.yangguo.yfs.common;
 
 import info.yangguo.yfs.common.po.FileEvent;
-import info.yangguo.yfs.common.po.RepairEvent;
 import info.yangguo.yfs.common.po.StoreInfo;
 import io.atomix.utils.serializer.Namespace;
 import io.atomix.utils.serializer.Serializer;
@@ -26,11 +25,14 @@ import java.util.*;
 public class CommonConstant {
     public static final String fileMetadataMapName = "file-metadata";
     public static final String storeInfoMapName = "store-info";
-    public static final String repairMetadataMapName = "repair-metadata";
     public static final String xHeaderPrefix = "x-yfs-";
     public static final String gatewayZone = "gateway";
     public static final String storeZone = "store";
     public static final String memberHttpPortPro = "http-port";
+    /**
+     * crc32 checksum
+     */
+    public static final String CRC32 = "crc32";
 
     public static final Serializer protocolSerializer = Serializer.using(Namespace.builder()
             .register(ArrayList.class)
@@ -40,7 +42,6 @@ public class CommonConstant {
             .register(Map.class)
             .register(HashMap.class)
             .register(HashSet.class)
-            .register(RepairEvent.class)
             .build());
 
     /**

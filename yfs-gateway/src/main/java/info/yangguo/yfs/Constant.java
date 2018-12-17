@@ -15,7 +15,8 @@
  */
 package info.yangguo.yfs;
 
-import info.yangguo.yfs.util.PropertiesUtil;
+
+import info.yangguo.yfs.common.utils.PropertiesUtil;
 
 import java.util.Map;
 

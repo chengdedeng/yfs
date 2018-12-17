@@ -21,7 +21,6 @@ import com.google.common.cache.RemovalListener;
 import com.google.common.cache.RemovalNotification;
 import info.yangguo.yfs.common.CommonConstant;
 import info.yangguo.yfs.common.po.FileEvent;
-import info.yangguo.yfs.common.po.RepairEvent;
 import info.yangguo.yfs.common.po.StoreInfo;
 import info.yangguo.yfs.common.utils.JsonUtil;
 import info.yangguo.yfs.service.FileService;
@@ -29,7 +28,6 @@ import io.atomix.cluster.Member;
 import io.atomix.cluster.discovery.BootstrapDiscoveryProvider;
 import io.atomix.core.Atomix;
 import io.atomix.core.map.AtomicMap;
-import io.atomix.core.map.AtomicMapEvent;
 import io.atomix.core.map.MapEvent;
 import io.atomix.core.profile.Profile;
 import io.atomix.primitive.partition.ManagedPartitionGroup;
@@ -39,8 +37,6 @@ import io.atomix.protocols.raft.partition.RaftPartitionGroup;
 import io.atomix.storage.StorageLevel;
 import io.atomix.utils.time.Versioned;
 import org.apache.commons.io.FileUtils;
-import org.apache.commons.lang3.tuple.ImmutablePair;
-import org.apache.commons.lang3.tuple.Pair;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -48,9 +44,10 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.stereotype.Component;
 
 import java.io.File;
-import java.util.*;
+import java.util.Collection;
+import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CountDownLatch;
-import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -59,7 +56,6 @@ public class YfsConfig {
     private static Logger logger = LoggerFactory.getLogger(YfsConfig.class);
     public AtomicMap<String, FileEvent> fileEventMap = null;
     public AtomicMap<String, StoreInfo> storeInfoMap = null;
-    public AtomicMap<String, RepairEvent> repairEventMap = null;
     public Cache<String, CountDownLatch> cache;
     @Autowired
     private ClusterProperties clusterProperties;
@@ -136,47 +132,6 @@ public class YfsConfig {
                 .build();
 
         return dataGroup;
-    };
-
-    public final Function<HashMap<String, HashSet<String>>, Set<String>> makeRepairExistNode = map -> map.entrySet().stream().map(entry -> entry.getValue()).flatMap(set -> set.stream()).collect(Collectors.toSet());
-
-    private final Function<AtomicMapEvent<String, RepairEvent>, RepairEvent> makeReapirEvent = atomicMapEvent -> {
-        String key = atomicMapEvent.key();
-        Versioned<RepairEvent> newValue = atomicMapEvent.newValue();
-        HashMap<String, HashSet<String>> newEvent = newValue.value().getRepairInfo();
-        Set<String> existNodes = makeRepairExistNode.apply(newEvent);
-        if (!existNodes.contains(clusterProperties.getLocal())) {
-            String fullPath = FileService.getFullPath(clusterProperties, key);
-            if (FileService.checkExist(fullPath)) {
-                try {
-                    String crc32 = String.valueOf(FileUtils.checksumCRC32(new File(fullPath)));
-                    if (newEvent.containsKey(crc32)) {
-                        newEvent.get(crc32).add(clusterProperties.getLocal());
-                    } else {
-                        HashSet<String> newNodes = new HashSet<>();
-                        newNodes.add(clusterProperties.getLocal());
-                        newEvent.put(crc32, newNodes);
-                    }
-                } catch (Exception e) {
-                    if (newEvent.containsKey(null)) {
-                        newEvent.get(null).add(clusterProperties.getLocal());
-                    } else {
-                        HashSet<String> newNodes = new HashSet<>();
-                        newNodes.add(clusterProperties.getLocal());
-                        newEvent.put(null, newNodes);
-                    }
-                }
-            } else {
-                if (newEvent.containsKey(null)) {
-                    newEvent.get(null).add(clusterProperties.getLocal());
-                } else {
-                    HashSet<String> newNodes = new HashSet<>();
-                    newNodes.add(clusterProperties.getLocal());
-                    newEvent.put(null, newNodes);
-                }
-            }
-        }
-        return newValue.value();
     };
 
     public YfsConfig() {
@@ -273,70 +228,6 @@ public class YfsConfig {
             }
         });
 
-
-        repairEventMap = atomix.<String, RepairEvent>atomicMapBuilder(CommonConstant.repairMetadataMapName)
-                .withProtocol(MultiRaftProtocol.builder()
-                        .withReadConsistency(ReadConsistency.LINEARIZABLE)
-                        .build())
-                .withSerializer(CommonConstant.protocolSerializer)
-                .withCacheEnabled()
-                .build();
-        repairEventMap.addListener(event -> {
-            String key = event.key();
-            switch (event.type()) {
-                case INSERT:
-                    Versioned<RepairEvent> versionedInsertEventNewValue = event.newValue();
-                    HashMap<String, HashSet<String>> insertEventValue = versionedInsertEventNewValue.value().getRepairInfo();
-                    Set<String> insertExistNodes = makeRepairExistNode.apply(insertEventValue);
-                    if (!insertExistNodes.contains(clusterProperties.getLocal())) {
-                        logger.info("RepairEventMap {} {}:\n{}",
-                                MapEvent.Type.INSERT.name(),
-                                key,
-                                JsonUtil.toJson(versionedInsertEventNewValue.value(), true));
-                        repairEventMap.replace(key, versionedInsertEventNewValue.version(), makeReapirEvent.apply(event));
-                    }
-                    break;
-                case UPDATE:
-                    Versioned<RepairEvent> versionedRepairEventNewValue = event.newValue();
-                    Set<String> updateExistNodes = makeRepairExistNode.apply(versionedRepairEventNewValue.value().getRepairInfo());
-                    if (!updateExistNodes.contains(clusterProperties.getLocal())) {
-                        logger.info("RepairEventMap {} {}:\noldValue:{}\nnewValue:{}",
-                                MapEvent.Type.UPDATE.name(),
-                                key,
-                                JsonUtil.toJson(event.oldValue().value(), true),
-                                JsonUtil.toJson(event.newValue().value(), true));
-                        repairEventMap.replace(key, versionedRepairEventNewValue.version(), makeReapirEvent.apply(event));
-                    } else {
-                        if (updateExistNodes.size() == clusterProperties.getStore().getNode().size()) {
-                            versionedRepairEventNewValue.value().getRepairInfo().entrySet().stream()
-                                    .filter(entry -> {
-                                        if (entry.getKey() == null) {
-                                            return false;
-                                        } else {
-                                            return true;
-                                        }
-                                    })
-                                    .map(entry -> new ImmutablePair<String, Integer>(entry.getKey(), entry.getValue().size()))
-                                    .max(Comparator.comparing(Pair::getValue))
-                                    .ifPresent(new Consumer<ImmutablePair<String, Integer>>() {
-                                        @Override
-                                        public void accept(ImmutablePair<String, Integer> pair) {
-                                            FileEvent fileEvent = new FileEvent();
-                                            fileEvent.setFileCrc32(pair.getLeft());
-                                            fileEvent.getAddNodes().addAll(versionedRepairEventNewValue.value().getRepairInfo().get(pair.getLeft()));
-                                            if (fileEventMap.putIfAbsent(key, fileEvent) == null) {
-                                                repairEventMap.remove(key);
-                                                logger.warn("Repair {} success", key);
-                                            }
-                                        }
-                                    });
-                        }
-                    }
-                    break;
-                default:
-                    break;
-            }
-        });
         return atomix;
     }
 
@@ -374,13 +265,13 @@ public class YfsConfig {
     private void syncFile(ClusterProperties clusterProperties, String fileRelativePath, Versioned<FileEvent> fileEventVersioned, MapEvent.Type type) {
         boolean isSendEvent = false;
         FileEvent fileEvent = fileEventVersioned.value();
-        if (fileEvent.getFileCrc32() != null && !fileEvent.getAddNodes().contains(clusterProperties.getLocal())) {
+        if (!fileEvent.getAddNodes().contains(clusterProperties.getLocal())) {
             for (String addNode : fileEvent.getAddNodes()) {
                 try {
                     ClusterProperties.ClusterNode clusterNode = storeNodeMap.apply(clusterProperties).get(addNode);
                     String fileUrl = "http://" + clusterNode.getIp() + ":" + clusterNode.getHttp_port() + "/" + fileRelativePath;
 
-                    FileService.store(clusterProperties, fileRelativePath, fileUrl, fileEvent.getFileCrc32());
+                    FileService.store(clusterProperties, fileRelativePath, fileUrl);
                     fileEvent.getAddNodes().add(clusterProperties.getLocal());
                     isSendEvent = true;
                     break;
